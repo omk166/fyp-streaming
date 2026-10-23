@@ -5,7 +5,7 @@ const count = Number(process.env.PARTICIPANTS || 2);
 const seconds = Number(process.env.DURATION || 30);
 const mode = process.env.MODE || 'h264';
 if (![2,4,6,8].includes(count) || !['h264','simulcast','vp9'].includes(mode) || seconds < 5) throw Error('Invalid scenario');
-const runId = `${new Date().toISOString().replaceAll(':','-')}-${mode}-${count}p`;
+const runId = `${new Date().toISOString().replace(/[:.]/g,'-')}-${mode}-${count}p`;
 const folder = `artifacts/raw/${runId}`;
 await mkdir(folder, { recursive: true }); await mkdir('artifacts/screenshots', { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || undefined, args: ['--autoplay-policy=no-user-gesture-required'] });
