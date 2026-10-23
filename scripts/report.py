@@ -57,11 +57,11 @@ for manifest in sorted((root/'raw').glob('*/manifest.json')):
     for peer_name,peer in sorted(peers.items()):
         data = json.loads(peer.read_text())
         if not data['samples']: continue
-        rows.append({'run_id': run['runId'], 'passed': run['passed'], 'source_clock':data['metadata'].get('syntheticClock','animation-frame'), 'mode': run['mode'],
+        rows.append({'run_id': run['runId'], 'passed': run['passed'], 'profile':run.get('impairment','none'), 'sfu_platform':run.get('sfuPlatform','windows-native'), 'source_clock':data['metadata'].get('syntheticClock','animation-frame'), 'mode': run['mode'],
             'participants': run['participants'], 'peer': Path(peer_name).stem, 'sample_count': len(data['samples']),
             'join_setup_ms': data.get('joinMs'), **measurements(data)})
 root.mkdir(exist_ok=True)
-fields = ['run_id','passed','source_clock','mode','participants','peer','sample_count','join_setup_ms',
+fields = ['run_id','passed','profile','sfu_platform','source_clock','mode','participants','peer','sample_count','join_setup_ms',
           'send_rtp_payload_kbps_mean','ice_rtt_ms_p95','inbound_jitter_ms_p95','inbound_video_fps_mean',
           'sfu_worker_cpu_one_core_pct_mean','node_rss_mib_mean']
 with (root/'results.csv').open('w',newline='',encoding='utf-8') as f:

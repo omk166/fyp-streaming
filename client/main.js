@@ -24,11 +24,27 @@ function render(track, id, muted = false) {
 async function syntheticStream() {
   const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360;
   const context = canvas.getContext('2d');
-  function draw() {
+  const generated = typeof MediaStreamTrackGenerator === 'function' && typeof VideoFrame === 'function';
+  const track = generated ? new MediaStreamTrackGenerator({ kind: 'video' }) : canvas.captureStream(0).getVideoTracks()[0];
+  const writer = generated ? track.writable.getWriter() : null;
+  state.metadata.syntheticClock = generated ? 'video-frame-timer' : 'manual-canvas-timer';
+  state.sourceFrames = 0;
+  let writing = false;
+  async function draw() {
+    if (writing || track.readyState === 'ended') return;
+    writing = true;
     const t = performance.now() / 1000;
     context.fillStyle = '#173450'; context.fillRect(0, 0, 640, 360);
     context.fillStyle = '#9ae8cf'; context.fillRect((t * 100) % 580, 150, 60, 60);
     context.font = '30px monospace'; context.fillText(`SYNTHETIC ${t.toFixed(2)}`, 20, 70);
+    try {
+      if (writer) {
+        const frame = new VideoFrame(canvas, { timestamp: Math.round(t * 1000000) });
+        try { await writer.write(frame); } finally { frame.close(); }
+      } else track.requestFrame();
+      state.sourceFrames++;
+    } catch (error) { if (state.joined) fail(error); }
+    finally { writing = false; }
   }
   draw(); animation = setInterval(draw, 1000 / 30);
   audioContext = new AudioContext(); await audioContext.resume();
@@ -36,7 +52,7 @@ async function syntheticStream() {
   const destination = audioContext.createMediaStreamDestination();
   oscillator.frequency.value = 440; gain.gain.value = 0.03;
   oscillator.connect(gain).connect(destination); oscillator.start();
-  return new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...destination.stream.getAudioTracks()]);
+  return new MediaStream([track, ...destination.stream.getAudioTracks()]);
 }
 async function consume(producerId) {
   if (!recv || seen.has(producerId)) return;
@@ -62,7 +78,7 @@ async function sample() {
       reports.push({ direction: transport.direction, reports: [...stats.values()] });
     }
     const server = await rpc('stats');
-    const item = { timestamp: new Date().toISOString(), monotonicMs: performance.now(), reports, server };
+    const item = { timestamp: new Date().toISOString(), monotonicMs: performance.now(), sourceFrames: state.sourceFrames, reports, server };
     state.samples.push(item);
     const rtp = reports.flatMap(t => t.reports).filter(r => ['inbound-rtp','outbound-rtp'].includes(r.type));
     $('metrics').textContent = JSON.stringify({ samples: state.samples.length, peers: server.peers, streams: rtp.map(r => ({ type: r.type, kind: r.kind, bytes: r.bytesReceived ?? r.bytesSent, packetsLost: r.packetsLost, jitter: r.jitter, framesPerSecond: r.framesPerSecond, frameWidth: r.frameWidth, frameHeight: r.frameHeight })) }, null, 2);
