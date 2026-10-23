@@ -29,9 +29,9 @@ async function syntheticStream() {
     context.fillStyle = '#173450'; context.fillRect(0, 0, 640, 360);
     context.fillStyle = '#9ae8cf'; context.fillRect((t * 100) % 580, 150, 60, 60);
     context.font = '30px monospace'; context.fillText(`SYNTHETIC ${t.toFixed(2)}`, 20, 70);
-    animation = requestAnimationFrame(draw);
   }
-  draw(); audioContext = new AudioContext(); await audioContext.resume();
+  draw(); animation = setInterval(draw, 1000 / 30);
+  audioContext = new AudioContext(); await audioContext.resume();
   const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
   const destination = audioContext.createMediaStreamDestination();
   oscillator.frequency.value = 440; gain.gain.value = 0.03;
@@ -73,7 +73,7 @@ async function join() {
   $('join').disabled = true;
   const started = performance.now();
   try {
-    state.metadata = { runId: params.get('run') || crypto.randomUUID(), mode: $('mode').value, synthetic: $('synthetic').checked, userAgent: navigator.userAgent, startedAt: new Date().toISOString(), origin: location.origin };
+    state.metadata = { runId: params.get('run') || crypto.randomUUID(), mode: $('mode').value, synthetic: $('synthetic').checked, syntheticClock: $('synthetic').checked ? 'timer' : null, userAgent: navigator.userAgent, startedAt: new Date().toISOString(), origin: location.origin };
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
     ws.onmessage = async ({ data }) => {
       const message = JSON.parse(data);
@@ -100,6 +100,7 @@ async function join() {
     if (!codec) throw Error('Requested codec unsupported; no silent fallback');
     const encodings = mode === 'simulcast' ? [{ scaleResolutionDownBy: 2, maxBitrate: 150000 }, { scaleResolutionDownBy: 1, maxBitrate: 550000 }] : mode === 'vp9' ? [{ scalabilityMode: 'L2T3', maxBitrate: 700000 }] : [{ maxBitrate: 700000 }];
     state.producers.push(await send.produce({ track: stream.getVideoTracks()[0], codec, encodings }));
+    state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; state.joinMs = performance.now() - started;
     event('joined', { joinMs: state.joinMs });
@@ -110,7 +111,7 @@ async function join() {
   } catch (error) { fail(error); leave(); }
 }
 function leave() {
-  state.joined = false; clearInterval(timer); cancelAnimationFrame(animation);
+  state.joined = false; clearInterval(timer); clearInterval(animation);
   for (const p of pending.values()) p.reject(Error('Left room')); pending.clear();
   send?.close(); recv?.close(); stream?.getTracks().forEach(t => t.stop()); audioContext?.close(); ws?.close();
   state.consumers.clear(); state.producers = []; seen.clear(); $('media').replaceChildren();

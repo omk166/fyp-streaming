@@ -37,6 +37,9 @@ try {
   await pages[0].getByRole('button', { name: 'Send', exact: true }).click();
   await pages[1].waitForFunction(() => document.getElementById('chat').textContent.includes('Smoke test room message'));
   checks.push({ name: 'chat delivered to second peer', passed: true });
+  const initial = await Promise.all(pages.map(page => page.evaluate(() =>
+    (window.lab.samples.at(-1)?.reports || []).flatMap(t => t.reports).filter(r => r.type === 'inbound-rtp')
+  )));
   await new Promise(resolve => setTimeout(resolve, seconds * 1000));
   for (let i = 0; i < count; i++) {
     const data = await pages[i].evaluate(() => window.lab.export());
@@ -44,9 +47,10 @@ try {
     if (data.errors.length) throw Error(`Peer ${i} errors: ${data.errors.join('; ')}`);
     const last = data.samples.at(-1);
     const inbound = last.reports.flatMap(t => t.reports).filter(r => r.type === 'inbound-rtp');
-    if (inbound.filter(r => r.kind === 'video' && r.framesDecoded > 0).length !== count - 1 || inbound.filter(r => r.kind === 'audio' && r.bytesReceived > 0).length !== count - 1) throw Error(`Peer ${i} missing decoded video or audio packets`);
+    const before = new Map(initial[i].map(r => [r.id,r]));
+    if (inbound.filter(r => r.kind === 'video' && r.framesDecoded > (before.get(r.id)?.framesDecoded || 0)).length !== count - 1 || inbound.filter(r => r.kind === 'audio' && r.bytesReceived > (before.get(r.id)?.bytesReceived || 0)).length !== count - 1) throw Error(`Peer ${i} missing progressing decoded video or audio packets`);
   }
-  checks.push({ name: 'every peer decoded remote video and received audio packets', passed: true });
+  checks.push({ name: 'every peer continued decoding remote video and receiving audio over observation', passed: true });
   await pages[0].screenshot({ path: `artifacts/screenshots/${runId}.png`, fullPage: true });
   await pages.at(-1).getByRole('button', { name: 'Leave', exact: true }).click();
   await pages[0].waitForFunction(n => window.lab.consumers.size === (n - 2) * 2, count, { timeout: 15000 });

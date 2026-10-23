@@ -55,22 +55,22 @@ for manifest in sorted((root/'raw').glob('*/manifest.json')):
     for peer in sorted(manifest.parent.glob('peer-[0-9]*.json')):
         if 'failure' in peer.name: continue
         data = json.loads(peer.read_text())
-        rows.append({'run_id': run['runId'], 'passed': run['passed'], 'mode': run['mode'],
+        rows.append({'run_id': run['runId'], 'passed': run['passed'], 'source_clock':data['metadata'].get('syntheticClock','animation-frame'), 'mode': run['mode'],
             'participants': run['participants'], 'peer': peer.stem, 'sample_count': len(data['samples']),
             'join_setup_ms': data.get('joinMs'), **measurements(data)})
 root.mkdir(exist_ok=True)
-fields = ['run_id','passed','mode','participants','peer','sample_count','join_setup_ms',
+fields = ['run_id','passed','source_clock','mode','participants','peer','sample_count','join_setup_ms',
           'send_rtp_payload_kbps_mean','ice_rtt_ms_p95','inbound_jitter_ms_p95','inbound_video_fps_mean',
           'sfu_worker_cpu_one_core_pct_mean','node_rss_mib_mean']
 with (root/'results.csv').open('w',newline='',encoding='utf-8') as f:
     writer=csv.DictWriter(f,fieldnames=fields); writer.writeheader(); writer.writerows(rows)
 lines=['# Measured local prototype results','',
 'Synthetic media; browsers and SFU share one laptop. RTP payload bitrate excludes transport overhead. RTT is not mouth-to-ear latency. No subjective or objective reference-video quality score was measured. Percentiles pool one-second reports per peer, not independent trials.','',
-'| Mode | Participants | Peer | Samples | Send payload kb/s (mean) | ICE RTT ms (p95) | Video FPS (mean) |',
-'|---|---:|---|---:|---:|---:|---:|']
+'| Source clock | Passed | Mode | Participants | Peer | Samples | Send payload kb/s (mean) | ICE RTT ms (p95) | Video FPS (mean) |',
+'|---|---|---|---:|---|---:|---:|---:|---:|']
 def fmt(v): return '' if v is None else f'{v:.2f}'
 for row in rows:
-    lines.append(f"| {row['mode']} | {row['participants']} | {row['peer']} | {row['sample_count']} | {fmt(row['send_rtp_payload_kbps_mean'])} | {fmt(row['ice_rtt_ms_p95'])} | {fmt(row['inbound_video_fps_mean'])} |")
+    lines.append(f"| {row['source_clock']} | {row['passed']} | {row['mode']} | {row['participants']} | {row['peer']} | {row['sample_count']} | {fmt(row['send_rtp_payload_kbps_mean'])} | {fmt(row['ice_rtt_ms_p95'])} | {fmt(row['inbound_video_fps_mean'])} |")
 if not rows: lines += ['', 'No completed telemetry runs found.']
 (root/'RESULTS.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
 print(f'Summarized {len(rows)} peer records')
