@@ -67,7 +67,7 @@ fields = ['run_id','passed','profile','sfu_platform','source_clock','mode','part
 with (root/'results.csv').open('w',newline='',encoding='utf-8') as f:
     writer=csv.DictWriter(f,fieldnames=fields); writer.writeheader(); writer.writerows(rows)
 lines=['# Measured local prototype results','',
-'Synthetic media; browsers and SFU share one laptop. RTP payload bitrate excludes transport overhead. RTT is not mouth-to-ear latency. No subjective or objective reference-video quality score was measured. Percentiles pool one-second reports per peer, not independent trials. Earlier animation-frame runs are harness diagnostics; use timer runs for the corrected-source baseline. Failed runs retain available measurements, which do not indicate successful service.','',
+'Synthetic media; browsers and SFU share one physical laptop. RTP payload bitrate excludes transport overhead. RTT is not mouth-to-ear latency. No subjective or objective reference-video quality score was measured. Percentiles pool one-second reports per peer, not independent trials. Larger accelerated runs stalled under multiple source implementations; use matched software-video runs for preliminary comparisons. Failed runs retain available measurements, which do not indicate successful service.','',
 '| Source clock | Passed | Mode | Participants | Peer | Samples | Send payload kb/s (mean) | ICE RTT ms (p95) | Video FPS (mean) |',
 '|---|---|---|---:|---|---:|---:|---:|---:|']
 def fmt(v): return '' if v is None else f'{v:.2f}'

@@ -15,6 +15,7 @@ await mkdir('artifacts/network',{recursive:true});
 try {
   for (const profile of profiles) {
     // Replace the lab root with an unshaped queue, then classify outgoing media.
+    tc(['qdisc','replace','dev','eth0','root','handle','2:','pfifo','limit','1000']);
     tc(['qdisc','replace','dev','eth0','root','handle','1:','prio']);
     if (profile.args.length) {
       tc(['qdisc','add','dev','eth0','parent','1:3','handle','30:','netem','limit','1000',...profile.args]);
@@ -27,7 +28,7 @@ try {
       child.once('error',reject); child.once('exit',resolve);
     });
     const after = tc(['-s','qdisc','show','dev','eth0']);
-    await writeFile(`artifacts/network/${profile.name}.json`,JSON.stringify({profile:profile.name,configuredArgs:profile.args,startedAt,before,after,exitCode:status,scope:'Shared SFU outgoing media from port 40000 on container eth0. Signaling excluded. Not individual sender uplink. Delay is applied only SFU-to-browser; use measured RTT rather than assuming symmetric delay.'},null,2));
+    await writeFile(`artifacts/network/${profile.name}.json`,JSON.stringify({profile:profile.name,configuredArgs:profile.args,startedAt,finishedAt:new Date().toISOString(),randomSeed:null,before,after,exitCode:status,scope:'Shared SFU outgoing media from port 40000 on container eth0. Signaling excluded. Not individual sender uplink. Delay is applied only SFU-to-browser; use measured RTT rather than assuming symmetric delay. Stochastic profiles are not seeded; repeat trials are required for variability estimates.'},null,2));
     hadFailure ||= status !== 0;
   }
 } finally {

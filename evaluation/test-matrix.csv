@@ -1,16 +1,16 @@
 test_id,area,profiles_from_guide,evidence,status
-B01,Baseline,Unmodified app; 2 participants; clean network,Join success/time; negotiated codecs; audio/video continuity; client/server resources,NOT RUN - app unavailable
-B02,Participant scale,"2, 4, 6, 8 participants",CPU/RAM; NIC ingress/egress; encode/decode FPS; freezes; audio continuity,NOT RUN - app unavailable
-N01,Bandwidth,"250, 500, 750, 1500 kb/s",Actual total sender bitrate; resolution/FPS; audio concealment; freezes,NOT RUN - app unavailable
-N02,Bandwidth step,2 -> 0.5 -> 2 Mb/s,Downgrade/recovery time; selected layers; oscillation; audio continuity,NOT RUN - app unavailable
-N03,Loss,"1, 3, 5, 10 percent",Loss; NACK/RTX/FEC overhead; freezes; concealment; timely recovery where observable,NOT RUN - app unavailable
-N04,Jitter,"10, 30, 60 ms variation; specify base delay and distribution",Measured jitter; jitter-buffer delay; freezes; concealment,NOT RUN - app unavailable
-N05,Delay,"Measured RTT targets 100, 200, 400 ms",RTT; independently measured audio delay; continuity; reconnects,NOT RUN - app unavailable
-N06,Connectivity,"Direct UDP; forced TURN UDP, TCP, TLS",Join success/time; selected candidate and relay transport; reconnects; media delay,NOT RUN - app unavailable
-C01,Codec/layer comparison,H.264 single; H.264 two-layer simulcast; VP9 SVC,Negotiated codec/layers; total upload; CPU; FPS; latency; aligned-reference VMAF/PSNR/SSIM,NOT RUN - app unavailable
-A01,Adaptation comparison,Default WebRTC vs deterministic adaptation; identical profiles,Downgrade/recovery; oscillation; freeze duration; original audio delay,NOT RUN - app unavailable
-L01,Original audio latency,Timed reference and receiver recording; calibrated timing,Per-event end-to-end delay; mean; p50/p95/p99; maximum; timing uncertainty,NOT RUN - app unavailable
-D01,Browser/device compatibility,"Available Chrome, Firefox, Edge on identified laptops",Versions/hardware; negotiated codec; join; audio/video; CPU; feature support,NOT RUN - app unavailable
-F01,Meeting features,Guest join; mute/camera; screen share; chat; reactions; hand; whiteboard; host permissions,Observed behavior; timestamps; screenshots; server-enforced permission outcomes,NOT RUN - app unavailable
-R01,Resilience,Network switch; reconnect; recorder/AI tap disabled or crashed if implemented,Interruption/recovery; original-media continuity; consent behavior,NOT RUN - app unavailable
-Q01,Subjective quality,Consented listeners; fixed clips; blind randomized conditions,Individual ratings; scale/anchors; sample size; MOS and uncertainty,NOT RUN - app unavailable
+B01,Baseline,Unmodified app; 2 participants; clean network,Join success/time; negotiated codecs; audio/video continuity; client/server resources,EXECUTED - preliminary two-browser synthetic local baseline; see artifacts/run-manifests.json
+B02,Participant scale,"2, 4, 6, 8 participants",CPU/RAM; NIC ingress/egress; encode/decode FPS; freezes; audio continuity,EXECUTED LOCALLY - 2/4 browser checks pass; 6/8 stalls investigated; separate-device capacity unverified
+N01,Bandwidth,"250, 500, 750, 1500 kb/s",Actual total sender bitrate; resolution/FPS; audio concealment; freezes,PENDING - isolated Linux impairment runner prepared; no result claimed until executed
+N02,Bandwidth step,2 -> 0.5 -> 2 Mb/s,Downgrade/recovery time; selected layers; oscillation; audio continuity,PENDING - isolated Linux impairment runner prepared; no result claimed until executed
+N03,Loss,"1, 3, 5, 10 percent",Loss; NACK/RTX/FEC overhead; freezes; concealment; timely recovery where observable,PENDING - isolated Linux impairment runner prepared; no result claimed until executed
+N04,Jitter,"10, 30, 60 ms variation; specify base delay and distribution",Measured jitter; jitter-buffer delay; freezes; concealment,PENDING - isolated Linux impairment runner prepared; no result claimed until executed
+N05,Delay,"Measured RTT targets 100, 200, 400 ms",RTT; independently measured audio delay; continuity; reconnects,PENDING - isolated Linux impairment runner prepared; no result claimed until executed
+N06,Connectivity,"Direct UDP; forced TURN UDP, TCP, TLS",Join success/time; selected candidate and relay transport; reconnects; media delay,PARTIAL - local direct connection only; TURN UDP/TCP/TLS pending
+C01,Codec/layer comparison,H.264 single; H.264 two-layer simulcast; VP9 SVC,Negotiated codec/layers; total upload; CPU; FPS; latency; aligned-reference VMAF/PSNR/SSIM,PARTIAL - three requested modes exercised locally; objective quality and matched repeat trials pending
+A01,Adaptation comparison,Default WebRTC vs deterministic adaptation; identical profiles,Downgrade/recovery; oscillation; freeze duration; original audio delay,PENDING - default WebRTC only; deterministic adaptation not implemented
+L01,Original audio latency,Timed reference and receiver recording; calibrated timing,Per-event end-to-end delay; mean; p50/p95/p99; maximum; timing uncertainty,NOT RUN - requires calibrated audio reference and receiver recording
+D01,Browser/device compatibility,"Available Chrome, Firefox, Edge on identified laptops",Versions/hardware; negotiated codec; join; audio/video; CPU; feature support,PARTIAL - Edge on one Windows laptop only
+F01,Meeting features,Guest join; mute/camera; screen share; chat; reactions; hand; whiteboard; host permissions,Observed behavior; timestamps; screenshots; server-enforced permission outcomes,"PARTIAL - mute/camera state, chat and leave checks; remaining meeting features not implemented"
+R01,Resilience,Network switch; reconnect; recorder/AI tap disabled or crashed if implemented,Interruption/recovery; original-media continuity; consent behavior,"PARTIAL - leave cleanup only; network switch, recorder and AI isolation pending"
+Q01,Subjective quality,Consented listeners; fixed clips; blind randomized conditions,Individual ratings; scale/anchors; sample size; MOS and uncertainty,NOT RUN - requires human listeners and rating protocol
