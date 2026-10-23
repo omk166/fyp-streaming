@@ -1,0 +1,7 @@
+node_modules/
+public/bundle.js
+.env
+artifacts/raw/
+artifacts/private/
+*.log
+__pycache__/

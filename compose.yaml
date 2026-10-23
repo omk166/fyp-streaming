@@ -1,0 +1,9 @@
+services:
+  streaming:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:40000:40000/udp"
+      - "127.0.0.1:40000:40000/tcp"
+    environment:
+      ANNOUNCED_ADDRESS: "127.0.0.1"
