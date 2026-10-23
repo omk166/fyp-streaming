@@ -1,0 +1,4 @@
+services:
+  streaming:
+    cap_add:
+      - NET_ADMIN

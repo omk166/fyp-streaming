@@ -17,15 +17,16 @@ def scrub(value):
 summaries=[]
 for path in sorted((root/'raw').glob('*/manifest.json')):
     manifest=json.loads(path.read_text())
-    peers=[peer for peer in sorted(path.parent.glob('peer-[0-9]*.json')) if 'failure' not in peer.name]
-    if not peers:
+    peers={p.name.replace('-failure',''):p for p in sorted(path.parent.glob('peer-[0-9]*.json')) if 'failure' in p.name}
+    peers.update({p.name:p for p in sorted(path.parent.glob('peer-[0-9]*.json')) if 'failure' not in p.name})
+    if not any(json.loads(p.read_text())['samples'] for p in peers.values()):
         # Debugging errors may contain local filesystem paths; retain locally.
         summaries.append({'runId':manifest['runId'],'passed':False,'note':'Development harness failure; no performance measurements. Details retained locally.'})
         continue
     public_manifest=scrub(manifest)
     public_manifest['errors']=[{'message':item['message'].split('\n')[0]} for item in manifest['errors']]
     export={'manifest':public_manifest,'peers':[]}
-    for peer in peers:
+    for peer in peers.values():
         export['peers'].append(scrub(json.loads(peer.read_text())))
     text=json.dumps(export,separators=(',',':'))
     # Reject unexpected literal IPs except local loopback used in the app URL.

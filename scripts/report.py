@@ -52,11 +52,13 @@ def measurements(data):
 root = Path('artifacts'); rows = []
 for manifest in sorted((root/'raw').glob('*/manifest.json')):
     run = json.loads(manifest.read_text())
-    for peer in sorted(manifest.parent.glob('peer-[0-9]*.json')):
-        if 'failure' in peer.name: continue
+    peers={p.name.replace('-failure',''):p for p in sorted(manifest.parent.glob('peer-[0-9]*.json')) if 'failure' in p.name}
+    peers.update({p.name:p for p in sorted(manifest.parent.glob('peer-[0-9]*.json')) if 'failure' not in p.name})
+    for peer_name,peer in sorted(peers.items()):
         data = json.loads(peer.read_text())
+        if not data['samples']: continue
         rows.append({'run_id': run['runId'], 'passed': run['passed'], 'source_clock':data['metadata'].get('syntheticClock','animation-frame'), 'mode': run['mode'],
-            'participants': run['participants'], 'peer': peer.stem, 'sample_count': len(data['samples']),
+            'participants': run['participants'], 'peer': Path(peer_name).stem, 'sample_count': len(data['samples']),
             'join_setup_ms': data.get('joinMs'), **measurements(data)})
 root.mkdir(exist_ok=True)
 fields = ['run_id','passed','source_clock','mode','participants','peer','sample_count','join_setup_ms',
@@ -65,7 +67,7 @@ fields = ['run_id','passed','source_clock','mode','participants','peer','sample_
 with (root/'results.csv').open('w',newline='',encoding='utf-8') as f:
     writer=csv.DictWriter(f,fieldnames=fields); writer.writeheader(); writer.writerows(rows)
 lines=['# Measured local prototype results','',
-'Synthetic media; browsers and SFU share one laptop. RTP payload bitrate excludes transport overhead. RTT is not mouth-to-ear latency. No subjective or objective reference-video quality score was measured. Percentiles pool one-second reports per peer, not independent trials.','',
+'Synthetic media; browsers and SFU share one laptop. RTP payload bitrate excludes transport overhead. RTT is not mouth-to-ear latency. No subjective or objective reference-video quality score was measured. Percentiles pool one-second reports per peer, not independent trials. Earlier animation-frame runs are harness diagnostics; use timer runs for the corrected-source baseline. Failed runs retain available measurements, which do not indicate successful service.','',
 '| Source clock | Passed | Mode | Participants | Peer | Samples | Send payload kb/s (mean) | ICE RTT ms (p95) | Video FPS (mean) |',
 '|---|---|---|---:|---|---:|---:|---:|---:|']
 def fmt(v): return '' if v is None else f'{v:.2f}'

@@ -14,12 +14,13 @@ env=json.loads((root/'environment.json').read_text(encoding='utf-8-sig'))
 for key,value in env.items(): doc.add_paragraph(f'{key}: {value}')
 doc.add_paragraph('All browser participants and the mediasoup SFU run on the same Windows laptop. Each participant publishes an animated 640 x 360 canvas and a quiet 440 Hz synthetic tone. Browser sessions are isolated. Telemetry is sampled about once per second. Runs include join setup and functional checks before a timed observation period; the tables use all saved samples, including startup. These short trials provide functional evidence and preliminary telemetry, not statistically validated capacity or codec-quality conclusions.')
 doc.add_heading('Results',1)
+doc.add_paragraph('Rows labelled animation-frame are earlier harness diagnostics. Rows labelled timer use the corrected synthetic source and require continued media progress. Failure outcomes must be read alongside the metrics; a low bitrate from a frozen source is not an efficiency improvement.')
 table=doc.add_table(rows=1, cols=7); table.style='Light Shading Accent 1'
 headers=['Mode','Peers','Client','Samples','Upload kb/s','ICE RTT p95 ms','Video FPS']
 for cell,text in zip(table.rows[0].cells,headers): cell.text=text
 def fmt(value): return f'{float(value):.2f}' if value else 'N/A'
 for row in rows:
-    vals=[row['mode'],row['participants'],row['peer'],row['sample_count'],fmt(row['send_rtp_payload_kbps_mean']),fmt(row['ice_rtt_ms_p95']),fmt(row['inbound_video_fps_mean'])]
+    vals=[row['mode']+' / '+row['source_clock']+(' / FAIL' if row['passed']!='True' else ''),row['participants'],row['peer'],row['sample_count'],fmt(row['send_rtp_payload_kbps_mean']),fmt(row['ice_rtt_ms_p95']),fmt(row['inbound_video_fps_mean'])]
     for cell,text in zip(table.add_row().cells,vals): cell.text=text
 doc.add_paragraph('Upload is the sum of outbound RTP payload counters differentiated over time; transport headers and network overhead are excluded. FPS averages available inbound video reports. RTT is ICE candidate-pair RTT and does not measure end-to-end audio delay. Per-peer results from a shared laptop are correlated.')
 doc.add_heading('Functional checks and run outcomes',1)

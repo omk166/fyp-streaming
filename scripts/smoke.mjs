@@ -5,7 +5,9 @@ const count = Number(process.env.PARTICIPANTS || 2);
 const seconds = Number(process.env.DURATION || 30);
 const mode = process.env.MODE || 'h264';
 if (![2,4,6,8].includes(count) || !['h264','simulcast','vp9'].includes(mode) || seconds < 5) throw Error('Invalid scenario');
-const runId = `${new Date().toISOString().replace(/[:.]/g,'-')}-${mode}-${count}p`;
+const profile = process.env.PROFILE || 'windows-clean';
+if (!/^[a-z0-9-]{1,48}$/.test(profile)) throw Error('Invalid profile');
+const runId = `${new Date().toISOString().replace(/[:.]/g,'-')}-${mode}-${count}p-${profile}`;
 const folder = `artifacts/raw/${runId}`;
 await mkdir(folder, { recursive: true }); await mkdir('artifacts/screenshots', { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || undefined, args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -17,7 +19,7 @@ try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); contexts.push(context);
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', error => errors.push({ peer: i, message: error.message }));
-    await page.goto(`http://127.0.0.1:3000/?synthetic=1&mode=${mode}&room=${runId}&run=${runId}-peer${i}`);
+    await page.goto(`http://127.0.0.1:3000/?synthetic=1&mode=${mode}&room=${runId.slice(0,48)}&run=${runId}-peer${i}`);
     await page.getByRole('button', { name: 'Join room', exact: true }).click();
     await page.waitForFunction(() => window.lab?.joined, null, { timeout: 30000 });
   }
@@ -67,7 +69,7 @@ try {
   let gitCommit;
   try { gitCommit = execFileSync('git', ['rev-parse','HEAD'], { encoding: 'utf8' }).trim(); } catch { gitCommit = null; }
   const workingTree = execFileSync('git', ['status','--porcelain'], { encoding: 'utf8' }).trim();
-  await writeFile(`${folder}/manifest.json`, JSON.stringify({ runId, passed, checks, errors, mode, participants: count, measurementSeconds: seconds, browser: browser.version(), browserChannel: process.env.BROWSER_CHANNEL || 'chromium', platform: process.platform, node: process.version, gitCommit, workingTree, synthetic: true, impairment: 'none', limitations: ['All browsers and SFU on one Windows laptop', 'Synthetic canvas and tone; no real camera/microphone or human quality ratings', 'No mouth-to-ear measurement; no WAN, TURN, or network shaping', 'Join duration is application setup time, not time to first received media'] }, null, 2));
+  await writeFile(`${folder}/manifest.json`, JSON.stringify({ runId, passed, checks, errors, mode, participants: count, measurementSeconds: seconds, browser: browser.version(), browserChannel: process.env.BROWSER_CHANNEL || 'chromium', platform: process.platform, sfuPlatform: process.env.SFU_PLATFORM || 'windows-native', node: process.version, gitCommit, workingTree, synthetic: true, impairment: profile, limitations: ['All browsers and SFU share one physical laptop', 'Synthetic canvas and tone; no real camera/microphone or human quality ratings', 'No mouth-to-ear measurement, WAN, or TURN test', 'Join duration is application setup time, not time to first received media'] }, null, 2));
   await browser.close();
 }
 console.log(JSON.stringify({ runId, passed, checks, errors }, null, 2));
