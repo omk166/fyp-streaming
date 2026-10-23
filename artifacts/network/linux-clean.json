@@ -1,0 +1,13 @@
+{
+  "profile": "linux-clean",
+  "configuredArgs": [],
+  "startedAt": "2026-10-23T21:03:47.479Z",
+  "finishedAt": "2026-10-23T21:04:23.899Z",
+  "randomSeed": null,
+  "transitions": [],
+  "phaseErrors": [],
+  "before": "qdisc prio 1: root refcnt 13 bands 3 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1\n Sent 0 bytes 0 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n",
+  "after": "qdisc prio 1: root refcnt 13 bands 3 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1\n Sent 3107881 bytes 6922 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n",
+  "exitCode": 0,
+  "scope": "Shared SFU outgoing media from port 40000 on container eth0. Signaling excluded. Not individual sender uplink. Delay is applied only SFU-to-browser; use measured RTT rather than assuming symmetric delay. Stochastic profiles are not seeded; repeat trials are required for variability estimates."
+}

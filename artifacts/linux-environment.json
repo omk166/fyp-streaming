@@ -1,0 +1,10 @@
+﻿{
+    "node":  "v22.23.4",
+    "platform":  "linux",
+    "architecture":  "x64",
+    "kernel":  "6.18.40.1-microsoft-standard-WSL2",
+    "mediasoup":  "3.31.0",
+    "osRelease":  "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nVERSION=\"12 (bookworm)\"\nVERSION_CODENAME=bookworm\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+    "imageId":  "sha256:0560bf59504ff707380f00876001ebb216c2e76b3c2dd26d2602f459afe930be",
+    "serverSourceSha256":  "0bd593354e9c42a863d217b88f7838c75f04082e6514ec0280f5898461c98b40"
+}

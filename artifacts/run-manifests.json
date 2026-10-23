@@ -922,5 +922,869 @@
       "No mouth-to-ear measurement, WAN, or TURN test",
       "Join duration is application setup time, not time to first received media"
     ]
+  },
+  {
+    "runId": "2026-10-23T21-03-48-413Z-h264-2p-linux-clean",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "linux-clean",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-04-26-535Z-h264-2p-egress-250kbit",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-250kbit",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-05-03-929Z-h264-2p-egress-500kbit",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-500kbit",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-05-41-010Z-h264-2p-egress-750kbit",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-750kbit",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-06-17-794Z-h264-2p-egress-1500kbit",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-1500kbit",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-06-55-218Z-h264-2p-egress-loss-1pct",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-loss-1pct",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-07-32-679Z-h264-2p-egress-loss-3pct",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-loss-3pct",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-08-09-612Z-h264-2p-egress-loss-5pct",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-loss-5pct",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-08-46-645Z-h264-2p-egress-loss-10pct",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-loss-10pct",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-09-23-522Z-h264-2p-egress-jitter-10ms",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-jitter-10ms",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-10-00-864Z-h264-2p-egress-jitter-30ms",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-jitter-30ms",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-10-37-974Z-h264-2p-egress-jitter-60ms",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-jitter-60ms",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-11-15-186Z-h264-2p-egress-delay-100ms",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-delay-100ms",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-11-52-132Z-h264-2p-egress-delay-200ms",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-delay-200ms",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-12-29-370Z-h264-2p-egress-delay-400ms",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 30,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-delay-400ms",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
+  },
+  {
+    "runId": "2026-10-23T21-13-06-388Z-h264-2p-egress-step-2000-500-2000kbit",
+    "passed": true,
+    "checks": [
+      {
+        "name": "all peers receive expected audio and video tracks",
+        "passed": true
+      },
+      {
+        "name": "microphone producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "video producer pause/resume",
+        "passed": true
+      },
+      {
+        "name": "chat delivered to second peer",
+        "passed": true
+      },
+      {
+        "name": "every peer continued decoding remote video and receiving audio over observation",
+        "passed": true
+      },
+      {
+        "name": "remote tracks cleaned up after participant leaves",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "mode": "h264",
+    "participants": 2,
+    "measurementSeconds": 180,
+    "browser": "155.0.4283.62",
+    "browserChannel": "msedge",
+    "browserArgs": [
+      "--autoplay-policy=no-user-gesture-required",
+      "--disable-accelerated-video-encode",
+      "--disable-accelerated-video-decode",
+      "--disable-gpu"
+    ],
+    "platform": "win32",
+    "sfuPlatform": "docker-linux",
+    "node": "v22.23.4",
+    "gitCommit": "74000e46afc7947fe80830bc118f6916dd126674",
+    "synthetic": true,
+    "impairment": "egress-step-2000-500-2000kbit",
+    "limitations": [
+      "All browsers and SFU share one physical laptop",
+      "Synthetic canvas and tone; no real camera/microphone or human quality ratings",
+      "No mouth-to-ear measurement, WAN, or TURN test",
+      "Join duration is application setup time, not time to first received media"
+    ]
   }
 ]

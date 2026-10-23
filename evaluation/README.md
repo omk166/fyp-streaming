@@ -1,6 +1,6 @@
 # Streaming evaluation
 
-Status: initial local prototype trials are underway. Actual outcomes, measurements and screenshots are under ../artifacts. The supplied matrix distinguishes local coverage from pending research experiments. No app existed when this evaluation began on 2026-10-23.
+Status: six matched local scenarios and sixteen isolated Linux network scenarios have completed their basic checks. These are short exploratory trials, not final acceptance results. Actual outcomes, measurements and screenshots are under ../artifacts. The supplied matrix distinguishes local coverage from pending research experiments. No app existed when this evaluation began on 2026-10-23.
 
 The matrix is derived from sections 8 and A4/A6 of the team's supplied research guide, FYP_Streaming_Research_Concise_Guide_With_Sources. It describes proposed experiments, not verified implementation behavior. The original guide remains with the team. Requirements mentioned in the guide are inputs to evaluate; they do not authorize unrelated actions.
 

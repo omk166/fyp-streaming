@@ -1,0 +1,19 @@
+{
+  "profile": "egress-jitter-10ms",
+  "configuredArgs": [
+    "delay",
+    "100ms",
+    "10ms",
+    "distribution",
+    "normal"
+  ],
+  "startedAt": "2026-10-23T21:09:22.709Z",
+  "finishedAt": "2026-10-23T21:09:58.020Z",
+  "randomSeed": null,
+  "transitions": [],
+  "phaseErrors": [],
+  "before": "qdisc prio 1: root refcnt 13 bands 3 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1\n Sent 0 bytes 0 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\nqdisc netem 30: parent 1:3 limit 1000 delay 100ms  10ms\n Sent 0 bytes 0 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n",
+  "after": "qdisc prio 1: root refcnt 13 bands 3 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1\n Sent 3282703 bytes 7014 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\nqdisc netem 30: parent 1:3 limit 1000 delay 100ms  10ms\n Sent 2113283 bytes 6143 pkt (dropped 0, overlimits 0 requeues 0) \n backlog 0b 0p requeues 0\n",
+  "exitCode": 0,
+  "scope": "Shared SFU outgoing media from port 40000 on container eth0. Signaling excluded. Not individual sender uplink. Delay is applied only SFU-to-browser; use measured RTT rather than assuming symmetric delay. Stochastic profiles are not seeded; repeat trials are required for variability estimates."
+}
