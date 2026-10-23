@@ -27,6 +27,7 @@ def measurements(data):
             previous_server = sample
         sending = 0; valid = False
         for transport in sample['reports']:
+            codecs={r['id']:r.get('mimeType','').lower() for r in transport['reports'] if r['type']=='codec'}
             for r in transport['reports']:
                 key = (transport['direction'], r['id'])
                 old = previous.get(key)
@@ -38,7 +39,7 @@ def measurements(data):
                         valid = True
                 if r['type'] == 'candidate-pair' and r.get('state') == 'succeeded' and r.get('nominated') and 'currentRoundTripTime' in r:
                     rtt.append(r['currentRoundTripTime']*1000)
-                if r['type'] == 'inbound-rtp':
+                if r['type'] == 'inbound-rtp' and r.get('codecId') in codecs and not codecs[r['codecId']].endswith('/rtx'):
                     if 'jitter' in r: jitter.append(r['jitter']*1000)
                     if r.get('kind') == 'video' and 'framesPerSecond' in r: fps.append(r['framesPerSecond'])
                 previous[key] = r
