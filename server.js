@@ -1,5 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import { readFileSync } from 'node:fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
 
@@ -7,6 +9,8 @@ const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
 const mediaIp = process.env.MEDIA_IP || '127.0.0.1';
 const announcedAddress = process.env.ANNOUNCED_ADDRESS || (mediaIp === '0.0.0.0' ? '127.0.0.1' : undefined);
+if (Boolean(process.env.TLS_CERT) !== Boolean(process.env.TLS_KEY)) throw Error('Set both TLS_CERT and TLS_KEY');
+const tls = process.env.TLS_CERT ? { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY) } : null;
 const worker = await mediasoup.createWorker({ logLevel: 'warn' });
 worker.on('died', () => process.exit(1));
 const webRtcServer = await worker.createWebRtcServer({ listenInfos: [
@@ -34,7 +38,7 @@ async function getRoom(id) {
 const app = express();
 app.use(express.static('public'));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
-const server = createServer(app);
+const server = tls ? createHttpsServer(tls, app) : createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: 128 * 1024 });
 function emit(peer, event, data) {
   if (peer.ws.readyState === WebSocket.OPEN) peer.ws.send(JSON.stringify({ event, data }));
@@ -129,7 +133,7 @@ wss.on('connection', ws => {
     });
   });
 });
-server.listen(port, host, () => console.log(`Streaming lab: http://${host}:${port}`));
+server.listen(port, host, () => console.log(`Streaming lab: ${tls ? 'https' : 'http'}://${host}:${port}`));
 function stop() { for (const client of wss.clients) client.terminate(); worker.close(); server.close(); }
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);

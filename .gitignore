@@ -5,3 +5,5 @@ artifacts/raw/
 artifacts/private/
 *.log
 __pycache__/
+certs/
+public/demo-ca.cer
