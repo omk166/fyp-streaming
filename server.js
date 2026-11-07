@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
@@ -51,13 +52,20 @@ function owned(map, id) {
   if (!item || item.closed) throw Error('Object unavailable or not owned by this connection');
   return item;
 }
+function participant(peer) {
+  return { peerId: peer.id, username: peer.username, micMuted: peer.micMuted, handRaised: peer.handRaised };
+}
 async function action(peer, method, data) {
   if (method === 'join') {
     if (peer.room || !/^[a-zA-Z0-9_-]{1,48}$/.test(data.room)) throw Error('Invalid room');
+    const username = typeof data.username === 'string' ? data.username.trim() : 'Guest';
+    if (!username || username.length > 40) throw Error('Enter a username (1?40 characters)');
+    peer.username = username;
     peer.room = await getRoom(data.room);
     peer.roomId = data.room;
     peer.room.peers.add(peer);
-    return { routerRtpCapabilities: peer.room.router.rtpCapabilities };
+    broadcast(peer.room, peer, 'participant', participant(peer));
+    return { routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
@@ -73,10 +81,16 @@ async function action(peer, method, data) {
     case 'produce': {
       const transport = owned(peer.transports, data.transportId);
       if (transport.appData.direction !== 'send' || peer.producers.size >= 3) throw Error('Invalid producer');
-      const producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters });
+      const source = data.source || (data.kind === 'audio' ? 'microphone' : 'camera');
+      if (!['microphone','camera','screen'].includes(source) || (source === 'microphone' ? data.kind !== 'audio' : data.kind !== 'video') || [...peer.producers.values()].some(p => p.appData.source === source)) throw Error('Invalid media source');
+      const producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters, appData: { source, peerId: peer.id, username: peer.username } });
       peer.producers.set(producer.id, producer);
       broadcast(room, peer, 'producer', { producerId: producer.id });
       return { id: producer.id };
+    }
+    case 'closeProducer': {
+      const producer = owned(peer.producers, data.id);
+      producer.close(); peer.producers.delete(producer.id); return {};
     }
     case 'list':
       return [...room.peers].filter(p => p !== peer).flatMap(p => [...p.producers.keys()]);
@@ -87,17 +101,38 @@ async function action(peer, method, data) {
       if (transport.appData.direction !== 'recv' || peer.consumers.size >= 48) throw Error('Invalid consumer');
       const consumer = await transport.consume({ producerId: producer.id, rtpCapabilities: data.rtpCapabilities, paused: true });
       peer.consumers.set(consumer.id, consumer);
+      consumer.on('producerpause', () => emit(peer, 'consumerPaused', { id: consumer.id, paused: true }));
+      consumer.on('producerresume', () => emit(peer, 'consumerPaused', { id: consumer.id, paused: false }));
       consumer.on('producerclose', () => { peer.consumers.delete(consumer.id); emit(peer, 'consumerClosed', { id: consumer.id }); });
-      return { id: consumer.id, producerId: producer.id, kind: consumer.kind, rtpParameters: consumer.rtpParameters };
+      return { id: consumer.id, producerId: producer.id, kind: consumer.kind, rtpParameters: consumer.rtpParameters, appData: producer.appData };
     }
-    case 'resume': await owned(peer.consumers, data.id).resume(); return {};
+    case 'resume': {
+      const consumer = owned(peer.consumers, data.id);
+      await consumer.resume(); return { producerPaused: consumer.producerPaused };
+    }
     case 'pauseProducer': {
       const producer = owned(peer.producers, data.id);
-      await (data.paused ? producer.pause() : producer.resume()); return {};
+      if (typeof data.paused !== 'boolean') throw Error('Invalid pause state');
+      await (data.paused ? producer.pause() : producer.resume());
+      if (producer.appData.source === 'microphone') {
+        peer.micMuted = data.paused; broadcast(room, null, 'participant', participant(peer));
+      }
+      return {};
+    }
+    case 'hand': {
+      if (typeof data.raised !== 'boolean') throw Error('Invalid hand state');
+      peer.handRaised = data.raised;
+      broadcast(room, null, 'participant', participant(peer)); return {};
+    }
+    case 'reaction': {
+      if (!['thumbs-up', 'heart', 'laugh'].includes(data.reaction)) throw Error('Invalid reaction');
+      if (Date.now() - peer.lastReaction < 800) throw Error('Please wait before reacting again');
+      peer.lastReaction = Date.now();
+      broadcast(room, null, 'reaction', { ...participant(peer), reaction: data.reaction }); return {};
     }
     case 'chat': {
       if (typeof data.text !== 'string' || data.text.length > 1000) throw Error('Invalid message');
-      broadcast(room, null, 'chat', { text: data.text, at: new Date().toISOString() }); return {};
+      broadcast(room, null, 'chat', { text: data.text, username: peer.username, at: new Date().toISOString() }); return {};
     }
     case 'stats': {
       const transports = [];
@@ -108,7 +143,7 @@ async function action(peer, method, data) {
   }
 }
 wss.on('connection', ws => {
-  const peer = { ws, room: null, transports: new Map(), producers: new Map(), consumers: new Map() };
+  const peer = { id: randomUUID(), micMuted: false, handRaised: false, lastReaction: 0, ws, room: null, transports: new Map(), producers: new Map(), consumers: new Map() };
   let queue = Promise.resolve();
   ws.on('message', raw => {
     queue = queue.then(async () => {
@@ -128,6 +163,7 @@ wss.on('connection', ws => {
       const room = peer.room;
       if (room) {
         room.peers.delete(peer);
+        broadcast(room, null, 'participantLeft', { peerId: peer.id });
         if (!room.peers.size) { room.router.close(); rooms.delete(peer.roomId); }
       }
     });

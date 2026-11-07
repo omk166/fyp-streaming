@@ -6,7 +6,7 @@ Initial measured results: [concise results table](artifacts/SUMMARY.md), [Word r
 
 Controlled Linux experiments, when executed, are documented separately in [network results](artifacts/NETWORK_RESULTS.md), with [kernel shaping evidence](artifacts/network) and a [numeric CSV](artifacts/network-results.csv). Check exit codes represent basic media progress, not acceptable delay or perceptual quality.
 
-This is a local experiment environment. It has no authentication, host roles, recording, translation, TURN service or screen sharing yet. Do not expose this prototype as a public meeting service. Chat and mic/camera controls are included for basic functional tests. Reconnection requires leaving and joining again.
+This is a local experiment environment. It has no authentication, host roles, recording, translation or TURN service yet. Do not expose this prototype as a public meeting service. Usernames, chat, mic/camera controls, local video pinning and screen sharing are included for basic functional tests. Reconnection requires leaving and joining again.
 
 ## Run locally
 
@@ -20,7 +20,7 @@ npm run build
 npm start
 ```
 
-Open http://127.0.0.1:3000 in two browser tabs. Use the same room name. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
+Open http://127.0.0.1:3000 in two browser tabs. Enter your name and use the same room name. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
 
 Alternatively, start Docker Desktop and run `docker compose up --build`. The supplied Docker configuration binds to localhost only. Access from additional laptops needs a separately configured reachable media address and HTTPS for browser capture; it is not enabled by this local configuration.
 
@@ -55,3 +55,15 @@ The filter matches TCP/UDP source port 40000, so RTP, RTCP feedback, ICE and DTL
 ## Evaluation coverage
 
 See `evaluation/test-matrix.csv` for the scenarios derived from the supplied research guide. Impairment tests require Linux network shaping of the actual media route; browser HTTP throttling is insufficient. TURN, real device/browser comparisons, calibrated audio latency, reference-aligned VMAF/SSIM/PSNR, human MOS and optional recorder/AI isolation remain separate experiments.
+
+## Meeting controls
+
+Enter a display name (up to 40 characters) before joining. Names appear on camera and shared-screen tiles and in chat; these are display labels, not authenticated identities.
+
+Click **Pin** on a video to enlarge it in the centered stage above the other videos. Click **Unpin** to return to the grid. Pinning affects only your own view, and a departing or stopped pinned track returns your view to the grid.
+
+Click **Share screen** and choose a tab, window or display in the browser picker. Your camera and microphone remain available, and other participants receive the screen as a separate named video tile. Multiple people may share at once. Click **Stop sharing**, use the browser's stop control, or leave the meeting to end a share. Screen audio is not included. Display capture requires HTTPS (or localhost), a supporting desktop browser and any OS screen-recording permission.
+
+Run `node scripts/meeting-features.mjs` against the updated server (default `http://127.0.0.1:3100`, override with `BASE_URL`) for the three-participant feature check using Edge. It substitutes a generated display stream to verify media publication, reception and lifecycle; manually check the browser picker and real screen contents on the demo devices. The existing smoke script also accepts `BASE_URL`.
+
+Muted microphones show a muted icon and text beside the participant name on camera/screen tiles and in the participant list. **Raise hand** keeps a hand indicator visible to the room until you click **Lower hand** or leave. Late joiners receive the current mute and hand states. Thumbs up, heart and laugh buttons display a named reaction to everyone for four seconds; reactions do not persist or replay to late joiners.
