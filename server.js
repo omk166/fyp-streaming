@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
 
@@ -30,7 +32,7 @@ const creating = new Map();
 async function getRoom(id) {
   if (rooms.has(id)) return rooms.get(id);
   if (!creating.has(id)) creating.set(id, (async () => {
-    const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set() };
+    const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
     rooms.set(id, room);
     return room;
   })());
@@ -40,7 +42,8 @@ const app = express();
 app.use(express.static('public'));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = tls ? createHttpsServer(tls, app) : createServer(app);
-const wss = new WebSocketServer({ server, maxPayload: 128 * 1024 });
+// 1 MiB so a paused screen's still image (a JPEG data URL, capped below) fits in one message.
+const wss = new WebSocketServer({ server, maxPayload: 1024 * 1024 });
 function emit(peer, event, data) {
   if (peer.ws.readyState === WebSocket.OPEN) peer.ws.send(JSON.stringify({ event, data }));
 }
@@ -55,6 +58,21 @@ function owned(map, id) {
 function participant(peer) {
   return { peerId: peer.id, username: peer.username, micMuted: peer.micMuted, handRaised: peer.handRaised };
 }
+function sharing(room, target) {
+  return typeof target === 'string' && [...room.peers].some(p => p.id === target && [...p.producers.values()].some(pr => pr.appData.source === 'screen'));
+}
+function dropStroke(board, stroke) {
+  board.strokes.splice(board.strokes.indexOf(stroke), 1); board.index.delete(stroke.key); board.points -= stroke.pts.length;
+}
+function clearStrokes(room, target) {
+  for (const stroke of room.board.strokes.filter(s => s.target === target)) dropStroke(room.board, stroke);
+}
+// Share stopped or sharer left: drop the drawings AND the pause.
+function clearTarget(room, target) {
+  room.board.frozen.delete(target);
+  clearStrokes(room, target);
+}
+const STILL = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/]+=*$/;
 async function action(peer, method, data) {
   if (method === 'join') {
     if (peer.room || !/^[a-zA-Z0-9_-]{1,48}$/.test(data.room)) throw Error('Invalid room');
@@ -65,7 +83,7 @@ async function action(peer, method, data) {
     peer.roomId = data.room;
     peer.room.peers.add(peer);
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant) };
+    return { routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
@@ -90,7 +108,9 @@ async function action(peer, method, data) {
     }
     case 'closeProducer': {
       const producer = owned(peer.producers, data.id);
-      producer.close(); peer.producers.delete(producer.id); return {};
+      producer.close(); peer.producers.delete(producer.id);
+      if (producer.appData.source === 'screen') { clearTarget(room, peer.id); broadcast(room, null, 'wbClear', { target: peer.id, silent: true }); }
+      return {};
     }
     case 'list':
       return [...room.peers].filter(p => p !== peer).flatMap(p => [...p.producers.keys()]);
@@ -139,11 +159,50 @@ async function action(peer, method, data) {
       for (const t of peer.transports.values()) transports.push({ id: t.id, direction: t.appData.direction, reports: await t.getStats() });
       return { timestamp: new Date().toISOString(), nodeMemory: process.memoryUsage(), nodeCpu: process.cpuUsage(), worker: await worker.getResourceUsage(), peers: room.peers.size, transports };
     }
+    case 'wbSegment': {
+      const now = Date.now();
+      if (now - peer.wbWindow > 1000) { peer.wbWindow = now; peer.wbCount = 0; }
+      if (++peer.wbCount > 60) throw Error('Whiteboard rate limit');
+      const { id, color, size, pts, target } = data;
+      if (!sharing(room, target)) throw Error('That screen is not being shared');
+      if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !/^#[0-9a-fA-F]{6}$/.test(color) || !(size >= 1 && size <= 40)) throw Error('Invalid stroke');
+      if (!Array.isArray(pts) || !pts.length || pts.length > 200 || !pts.every(p => Array.isArray(p) && p.length === 2 && p.every(n => typeof n === 'number' && n >= 0 && n <= 1))) throw Error('Invalid points');
+      const board = room.board, key = `${peer.id}:${id}`;
+      let stroke = board.index.get(key);
+      if (!stroke) {
+        stroke = { key, target, color, size, pts: [] };
+        board.index.set(key, stroke); board.strokes.push(stroke);
+      }
+      stroke.pts.push(...pts); board.points += pts.length;
+      while (board.points > 50000 && board.strokes.length > 1) dropStroke(board, board.strokes[0]);
+      broadcast(room, peer, 'wbSegment', { key, target, color: stroke.color, size: stroke.size, pts }); return {};
+    }
+    case 'wbFreeze': {
+      // Only the sharer can pause their own screen. The still is the exact frame they paused on, so viewers
+      // (and anyone who joins later) all see the same picture under the live drawings.
+      if (data.target !== peer.id || !sharing(room, data.target) || typeof data.frozen !== 'boolean') throw Error('Invalid freeze request');
+      const image = data.frozen && typeof data.image === 'string' && data.image.length <= 900000 && STILL.test(data.image) ? data.image : null;
+      data.frozen ? room.board.frozen.set(data.target, image) : room.board.frozen.delete(data.target);
+      broadcast(room, peer, 'wbFreeze', { target: data.target, frozen: data.frozen, image, username: peer.username }); return {};
+    }
+    case 'wbClear': {
+      // Clears drawings only; a paused screen stays paused.
+      if (!sharing(room, data.target)) throw Error('That screen is not being shared');
+      clearStrokes(room, data.target);
+      broadcast(room, peer, 'wbClear', { target: data.target, username: peer.username }); return {};
+    }
+    case 'wbUndo': {
+      if (!sharing(room, data.target)) throw Error('That screen is not being shared');
+      const stroke = room.board.strokes.findLast(s => s.target === data.target && s.key.startsWith(`${peer.id}:`));
+      if (!stroke) return { key: null };
+      dropStroke(room.board, stroke);
+      broadcast(room, peer, 'wbRemove', { target: data.target, key: stroke.key }); return { key: stroke.key };
+    }
     default: throw Error('Unknown method');
   }
 }
 wss.on('connection', ws => {
-  const peer = { id: randomUUID(), micMuted: false, handRaised: false, lastReaction: 0, ws, room: null, transports: new Map(), producers: new Map(), consumers: new Map() };
+  const peer = { id: randomUUID(), micMuted: false, handRaised: false, lastReaction: 0, wbWindow: 0, wbCount: 0, ws, room: null, transports: new Map(), producers: new Map(), consumers: new Map() };
   let queue = Promise.resolve();
   ws.on('message', raw => {
     queue = queue.then(async () => {
@@ -151,7 +210,7 @@ wss.on('connection', ws => {
       try {
         request = JSON.parse(raw.toString());
         const result = await action(peer, request.method, request.data || {});
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: request.id, result }));
+        if (request.id !== undefined && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: request.id, result }));
       } catch (error) {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: request?.id, error: error.message }));
       }
@@ -162,14 +221,27 @@ wss.on('connection', ws => {
       for (const t of peer.transports.values()) t.close();
       const room = peer.room;
       if (room) {
-        room.peers.delete(peer);
+        room.peers.delete(peer); clearTarget(room, peer.id);
         broadcast(room, null, 'participantLeft', { peerId: peer.id });
         if (!room.peers.size) { room.router.close(); rooms.delete(peer.roomId); }
       }
     });
   });
 });
-server.listen(port, host, () => console.log(`Streaming lab: ${tls ? 'https' : 'http'}://${host}:${port}`));
-function stop() { for (const client of wss.clients) client.terminate(); worker.close(); server.close(); }
+server.listen(port, host, () => { console.log(`Streaming lab: ${tls ? 'https' : 'http'}://${host}:${port}`); startScreenPen(); });
+// Screen pen (overlay/): on the Mac/PC you present from, start the draw-over-any-app helper together with the
+// server, so there is nothing extra to run. Skipped on Linux servers; SCREEN_PEN=0 turns it off.
+let screenPen = null;
+function startScreenPen() {
+  if (!['darwin', 'win32'].includes(process.platform) || process.env.SCREEN_PEN === '0') return;
+  const dir = fileURLToPath(new URL('./overlay/', import.meta.url)), cli = `${dir}node_modules/electron/cli.js`;
+  // electron's cli.js forwards SIGINT/SIGTERM to the app, so stopping the server stops the pen too.
+  const run = () => { screenPen = spawn(process.execPath, [cli, '.'], { cwd: dir, stdio: 'inherit' }); screenPen.on('exit', () => { screenPen = null; }); };
+  if (existsSync(cli)) return run();
+  console.log('[screen pen] Installing (first run only)...');
+  spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--no-audit', '--no-fund'], { cwd: dir, stdio: 'inherit', shell: process.platform === 'win32' })
+    .on('exit', code => code ? console.log('[screen pen] Install failed; drawing over other apps is unavailable.') : run());
+}
+function stop() { screenPen?.kill(); for (const client of wss.clients) client.terminate(); worker.close(); server.close(); }
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);

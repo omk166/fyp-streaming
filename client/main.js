@@ -1,5 +1,7 @@
 import { Device } from 'mediasoup-client';
-const $ = id => document.getElementById(id);
+let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
+// Look in the pop-out window too: the toolbar and screen tile move there while it is open.
+const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const state = window.lab = { samples: [], events: [], consumers: new Map(), producers: [], joined: false, errors: [] };
 let ws, device, send, recv, stream, timer, audioContext, animation;
@@ -47,6 +49,7 @@ function showReaction(data) {
 function updatePin() {
   $('stage').hidden = !pinned;
   for (const [id, tile] of tiles) {
+    if (pipWin && tile.ownerDocument === pipWin.document) continue; // popped out: stays in the floating window
     (id === pinned ? $('stage') : $('media')).append(tile);
     tile.querySelector('button').textContent = id === pinned ? 'Unpin' : 'Pin';
     tile.querySelector('button').setAttribute('aria-pressed', String(id === pinned));
@@ -62,6 +65,8 @@ function setVideoPaused(id, paused) {
 function removeTrack(id) {
   const tile = tiles.get(id);
   tile?.remove(); tiles.delete(id); $(`track-${id}`)?.remove();
+  for (const [target, o] of overlays) if (o.id === id) { overlays.delete(target); frozen.delete(target); }
+  updateBar();
   if (pinned === id) pinned = null;
   updatePin();
 }
@@ -78,6 +83,7 @@ function render(track, id, muted = false, info = {}) {
     const badges = document.createElement('span'); badges.className = 'participant-status'; badges.setAttribute('aria-live', 'polite');
     label.append(badges);
     footer.append(label, button); tile.append(el, footer); tiles.set(id, tile); updatePin(); refreshParticipantUI();
+    if (info.source === 'screen') attachOverlay(tile.dataset.peerId, tile, el, id);
   } else $('media').append(el);
   el.play().catch(error => event('playbackBlocked', { message: error.message }));
 }
@@ -89,7 +95,7 @@ async function stopScreen() {
     producer.close(); state.producers = state.producers.filter(p => p !== producer);
     if (state.joined) await rpc('closeProducer', { id: producer.id });
   }
-  $('screen').textContent = 'Share screen';
+  $('screen').textContent = 'Share screen'; $('wbBar').hidden = true; setDrawing(false); pipWin?.close(); penStop();
 }
 async function shareScreen() {
   if (screenBusy || !state.joined) return;
@@ -108,7 +114,9 @@ async function shareScreen() {
     screenProducer = producer; state.producers.push(producer);
     track.onended = () => stopScreen().catch(fail);
     render(track, 'screen-local', true, { source: 'screen' });
-    $('screen').textContent = 'Stop sharing';
+    $('screen').textContent = 'Stop sharing'; $('wbBar').hidden = false;
+    $('status').textContent = 'Sharing. Drawing tools are on the right; \u29C9 pops them out with a live preview so you can draw while on other pages or apps.';
+    penStart();
     if (track.readyState === 'ended') await stopScreen();
   } catch (error) {
     captured?.getTracks().forEach(t => t.stop());
@@ -203,6 +211,16 @@ async function join() {
         participants.set(message.data.peerId, message.data); refreshParticipantUI();
       } else if (message.event === 'participantLeft') {
         participants.delete(message.data.peerId); refreshParticipantUI();
+      } else if (message.event === 'wbSegment') {
+        annotationRemote(message.data);
+      } else if (message.event === 'wbFreeze') {
+        setFrozen(message.data.target, message.data.frozen, message.data.image || null);
+        $('status').textContent = `${message.data.username} ${message.data.frozen ? 'paused' : 'resumed'} the shared screen.`;
+      } else if (message.event === 'wbRemove') {
+        annotationRemove(message.data.target, message.data.key);
+      } else if (message.event === 'wbClear') {
+        annotationClear(message.data.target);
+        if (!message.data.silent) $('status').textContent = `${message.data.username} cleared the screen annotations.`;
       } else if (message.event === 'reaction') {
         showReaction(message.data);
       } else if (message.event === 'chat') { $('chat').textContent += `${message.data.username || 'Guest'}: ${message.data.text}\n`; event('chat'); }
@@ -212,6 +230,7 @@ async function join() {
     const info = await rpc('join', { room: $('room').value, username: $('username').value.trim() });
     state.peerId = info.peerId; state.username = info.username;
     for (const peer of info.participants) participants.set(peer.peerId, peer);
+    annotationsLoad(info.board || []); frozen.clear(); for (const f of info.frozen || []) frozen.set(f.target, f.image || null);
     refreshParticipantUI();
     device = new Device(); await device.load(info);
     send = device.createSendTransport(await rpc('transport', { direction: 'send' })); bindTransport(send);
@@ -229,7 +248,8 @@ async function join() {
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; state.joinMs = performance.now() - started;
     event('joined', { joinMs: state.joinMs });
-    for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh']) $(id).disabled = false;
+    for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = false;
+
     for (const id of ['room','mode','synthetic','username']) $(id).disabled = true;
     $('status').textContent = `Joined ${$('room').value}. ${state.metadata.synthetic ? 'Synthetic' : 'Camera/microphone'} media. Telemetry active.`;
     timer = setInterval(sample, 1000); await sample();
@@ -246,7 +266,8 @@ function leave() {
   for (const p of pending.values()) p.reject(Error('Left room')); pending.clear();
   send?.close(); recv?.close(); stream?.getTracks().forEach(t => t.stop()); audioContext?.close(); ws?.close();
   state.consumers.clear(); state.producers = []; seen.clear(); $('media').replaceChildren(); $('stage').replaceChildren(); tiles.clear(); pinned = null; updatePin();
-  for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh']) $(id).disabled = true;
+  for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = true;
+  $('wbBar').hidden = true; pipWin?.close(); penStop(); clearTimeout(wbTimer); setDrawing(false); overlays.clear(); annotations.clear(); frozen.clear();
   for (const id of ['join','room','mode','synthetic','username']) $(id).disabled = false;
   $('mic').textContent = 'Mute microphone'; $('camera').textContent = 'Pause camera';
   event('left');
@@ -278,6 +299,247 @@ for (const [id, reaction] of [['react-like','thumbs-up'], ['react-heart','heart'
       if (session === currentSession) for (const button of document.querySelectorAll('[data-reaction]')) button.disabled = !state.joined;
     }, 900);
   };
+}
+
+// ---- Screen whiteboard: strokes are drawn over the VIDEO of a shared screen, never onto the screen itself.
+// Coordinates are 0..1 of the shared picture, so every viewer sees the same marks whatever their window size.
+// `target` = the sharer's peerId. Because the ink is a separate layer, pausing only freezes the picture under it:
+// drawings keep arriving live on top of the paused frame.
+const annotations = new Map(), overlays = new Map();
+let drawing = null, wbTimer = null, wbBuffer = [], drawOn = false, pauseBusy = false;
+const frozen = new Map(); // target -> still image (data URL) or null when only the live video can be snapshotted
+function paintStroke(canvas, stroke, from) {
+  const ctx = canvas.getContext('2d');
+  ctx.strokeStyle = ctx.fillStyle = stroke.color; ctx.lineWidth = stroke.size; ctx.lineCap = ctx.lineJoin = 'round';
+  const px = ([x, y]) => [x * canvas.width, y * canvas.height];
+  if (stroke.pts.length === 1) { const [x, y] = px(stroke.pts[0]); ctx.beginPath(); ctx.arc(x, y, stroke.size / 2, 0, 7); ctx.fill(); return; }
+  ctx.beginPath(); ctx.moveTo(...px(stroke.pts[Math.max(0, from - 1)]));
+  for (let i = Math.max(1, from); i < stroke.pts.length; i++) ctx.lineTo(...px(stroke.pts[i]));
+  ctx.stroke();
+}
+function repaint(target) {
+  const o = overlays.get(target); if (!o) return;
+  o.canvas.getContext('2d').clearRect(0, 0, o.canvas.width, o.canvas.height);
+  for (const stroke of annotations.get(target)?.values() || []) if (stroke.pts.length) paintStroke(o.canvas, stroke, 0);
+}
+function layoutOverlay(target) {
+  const o = overlays.get(target); if (!o) return;
+  const { canvas, video } = o, vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  // Match the picture inside the video box (object-fit: contain leaves letterbox bars).
+  const bw = video.clientWidth, bh = video.clientHeight, scale = Math.min(bw / vw, bh / vh), w = vw * scale, h = vh * scale;
+  const box = { left: `${video.offsetLeft + (bw - w) / 2}px`, top: `${video.offsetTop + (bh - h) / 2}px`, width: `${w}px`, height: `${h}px` };
+  Object.assign(canvas.style, box); if (o.freeze) Object.assign(o.freeze.style, box);
+  applyFreeze(target);
+  const ih = Math.round(1280 * vh / vw);
+  if (canvas.width !== 1280 || canvas.height !== ih) { canvas.width = 1280; canvas.height = ih; repaint(target); }
+}
+// Pause = show a still picture under the drawing layer. The sharer sends the exact frame they paused on, so
+// everyone (including people who join later) sees the same image; their own real screen stays live.
+function applyFreeze(target) {
+  const o = overlays.get(target); if (!o) return;
+  const want = frozen.has(target), { video, canvas } = o;
+  if (want && !o.freeze) {
+    const image = frozen.get(target);
+    let still;
+    if (image) { still = canvas.ownerDocument.createElement('img'); still.src = image; still.alt = ''; }
+    else if (video.videoWidth) { // Fallback: snapshot the frame this viewer is currently showing.
+      still = canvas.ownerDocument.createElement('canvas');
+      still.width = Math.min(1280, video.videoWidth); still.height = Math.round(still.width * video.videoHeight / video.videoWidth);
+      still.getContext('2d').drawImage(video, 0, 0, still.width, still.height);
+    } else return;
+    still.className = 'freeze';
+    Object.assign(still.style, { left: canvas.style.left, top: canvas.style.top, width: canvas.style.width, height: canvas.style.height });
+    canvas.before(still); o.freeze = still;
+  } else if (!want && o.freeze) { o.freeze.remove(); o.freeze = null; }
+}
+function setFrozen(target, on, image = null) {
+  const o = overlays.get(target);
+  if (o?.freeze) { o.freeze.remove(); o.freeze = null; } // a new pause always gets its new picture
+  on ? frozen.set(target, image) : frozen.delete(target); applyFreeze(target); updateBar();
+}
+function setDrawing(on) {
+  drawOn = on && state.joined && Boolean(screenProducer);
+  document.body.classList.toggle('drawing', drawOn); pipWin?.document.body.classList.toggle('drawing', drawOn);
+  $('wbDraw').setAttribute('aria-pressed', String(drawOn));
+  if (!drawOn && drawing) { annotateFlush(); drawing = null; }
+}
+function updateBar() {
+  const paused = frozen.has(state.peerId);
+  $('wbFreeze').setAttribute('aria-pressed', String(paused));
+  $('wbFreeze').textContent = paused ? '▶' : '⏸';
+  $('wbFreeze').title = paused ? 'Resume: viewers see your live screen again' : 'Pause: viewers see a still of your screen; drawings stay live';
+  $('wbPop').setAttribute('aria-pressed', String(Boolean(pipWin)));
+  $('wbDraw').setAttribute('aria-pressed', String(penWs ? penOn : drawOn));
+  penSend({ cmd: 'paused', on: paused });
+}
+function annotatePoint(e, canvas) {
+  const r = canvas.getBoundingClientRect();
+  return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
+}
+function annotateFlush() {
+  clearTimeout(wbTimer); wbTimer = null;
+  if (!drawing || !wbBuffer.length || !state.joined) { wbBuffer = []; return; }
+  // Fire-and-forget: no id, so the server sends no reply.
+  ws.send(JSON.stringify({ method: 'wbSegment', data: { id: drawing.id, target: drawing.target, color: drawing.color, size: drawing.size, pts: wbBuffer.splice(0, 200) } }));
+  if (wbBuffer.length) annotateFlush();
+}
+function annotateAdd(p) {
+  const from = drawing.pts.length; drawing.pts.push(p); wbBuffer.push(p); paintStroke(overlays.get(drawing.target).canvas, drawing, from);
+  if (!wbTimer) wbTimer = setTimeout(annotateFlush, 50);
+}
+function attachOverlay(target, tile, video, id) {
+  const canvas = document.createElement('canvas'); canvas.className = 'annot'; canvas.setAttribute('aria-label', 'Screen annotations');
+  tile.append(canvas); overlays.set(target, { canvas, video, id });
+  canvas.classList.toggle('mine', target === state.peerId);
+  const relayout = () => layoutOverlay(target);
+  video.addEventListener('loadedmetadata', relayout); video.addEventListener('resize', relayout);
+  new ResizeObserver(relayout).observe(video); relayout(); updateBar();
+  canvas.onpointerdown = e => {
+    if (!state.joined || e.button > 0 || !drawOn || target !== state.peerId) return;
+    canvas.setPointerCapture(e.pointerId);
+    const sid = crypto.randomUUID().slice(0, 12);
+    drawing = { id: sid, key: `${state.peerId}:${sid}`, target, color: $('wbColor').value, size: Number($('wbSize').value), pts: [] };
+    if (!annotations.has(target)) annotations.set(target, new Map());
+    annotations.get(target).set(drawing.key, drawing); annotateAdd(annotatePoint(e, canvas));
+  };
+  canvas.onpointermove = e => { if (drawing?.target === target) annotateAdd(annotatePoint(e, canvas)); };
+  canvas.onpointerup = canvas.onpointercancel = () => { if (drawing) { annotateFlush(); drawing = null; } };
+}
+function annotationsLoad(list) {
+  annotations.clear();
+  for (const s of list) { if (!annotations.has(s.target)) annotations.set(s.target, new Map()); annotations.get(s.target).set(s.key, s); }
+  for (const target of overlays.keys()) repaint(target);
+}
+function annotationRemote(seg) {
+  if (!annotations.has(seg.target)) annotations.set(seg.target, new Map());
+  const strokes = annotations.get(seg.target); let stroke = strokes.get(seg.key);
+  const from = stroke ? stroke.pts.length : 0;
+  if (!stroke) { stroke = { key: seg.key, target: seg.target, color: seg.color, size: seg.size, pts: [] }; strokes.set(seg.key, stroke); }
+  stroke.pts.push(...seg.pts);
+  const o = overlays.get(seg.target); if (o) paintStroke(o.canvas, stroke, from);
+}
+function annotationRemove(target, key) { annotations.get(target)?.delete(key); repaint(target); }
+function annotationClear(target) { annotations.delete(target); repaint(target); }
+
+// The frame being shared right now, as a JPEG small enough for one signaling message.
+async function grabStill() {
+  const track = screenStream?.getVideoTracks()[0]; if (!track) return null;
+  let source = null;
+  // grabFrame works even while this tab is in the background (you are presenting another page).
+  try { source = await new ImageCapture(track).grabFrame(); } catch { source = tiles.get('screen-local')?.querySelector('video'); }
+  const isVideo = source instanceof HTMLVideoElement, w0 = isVideo ? source.videoWidth : source?.width, h0 = isVideo ? source.videoHeight : source?.height;
+  if (!w0 || !h0) return null;
+  for (const width of [1280, 960, 640]) {
+    const c = document.createElement('canvas'); c.width = Math.min(width, w0); c.height = Math.round(c.width * h0 / w0);
+    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+    for (const quality of [0.75, 0.55]) { const url = c.toDataURL('image/jpeg', quality); if (url.length <= 880000) { source.close?.(); return url; } }
+  }
+  source.close?.(); return null;
+}
+async function togglePause() {
+  const target = state.peerId; if (!screenProducer || !overlays.has(target) || pauseBusy) return;
+  pauseBusy = true;
+  try {
+    if (frozen.has(target)) { setFrozen(target, false); await rpc('wbFreeze', { target, frozen: false }); return; }
+    const image = await grabStill();
+    setFrozen(target, true, image); await rpc('wbFreeze', { target, frozen: true, image });
+    event('wbPause', { stillBytes: image?.length || 0 });
+  } catch (error) { fail(error); } finally { pauseBusy = false; }
+}
+
+// Pop-out: an always-on-top Picture-in-Picture window with a live preview of your shared screen and the toolbar.
+// It floats over any page or app, so you can switch away from this tab and still draw on what everyone sees.
+const PIP_CSS = `body.pip-body{margin:0;padding:0;display:flex;height:100vh;overflow:hidden;background:#101827}
+body.pip-body .tile{flex:1;min-width:0;border-radius:0;display:flex;flex-direction:column}
+body.pip-body .tile video{flex:1;min-height:0;height:auto;aspect-ratio:auto;border-radius:0}
+body.pip-body .tile footer{display:none}
+body.pip-body #wbBar{overflow-y:auto;padding:6px}`;
+async function popOut() {
+  if (pipWin) { pipWin.close(); return; }
+  if (!window.documentPictureInPicture) { $('status').textContent = 'Pop-out needs Chrome or Edge 116+. You can still draw on your screen tile in this page.'; return; }
+  const tile = tiles.get('screen-local'); if (!tile) return;
+  const video = tile.querySelector('video'), bar = $('wbBar'), relayout = () => layoutOverlay(state.peerId);
+  try {
+    const win = pipWin = await documentPictureInPicture.requestWindow({ width: 760, height: 460 });
+    for (const style of document.querySelectorAll('style')) win.document.head.append(style.cloneNode(true));
+    const extra = win.document.createElement('style'); extra.textContent = PIP_CSS; win.document.head.append(extra);
+    win.document.title = 'Draw on your shared screen';
+    win.document.body.className = 'pip-body'; win.document.body.classList.toggle('drawing', drawOn);
+    bar.classList.add('pip'); win.document.body.append(tile, bar);
+    video.play().catch(() => {});
+    win.addEventListener('resize', relayout); setTimeout(relayout, 50);
+    win.addEventListener('keydown', e => { if (e.key === 'Escape' && drawOn) setDrawing(false); });
+    win.addEventListener('pagehide', () => {
+      pipWin = null; bar.classList.remove('pip'); document.body.append(bar);
+      updatePin(); video.play().catch(() => {}); setTimeout(relayout, 50); updateBar();
+    });
+    updateBar();
+  } catch (error) { pipWin = null; fail(error); }
+}
+$('wbPop').onclick = popOut;
+$('wbDraw').onclick = () => {
+  if (!screenProducer) return;
+  if (penWs?.readyState === WebSocket.OPEN) penSend({ cmd: 'pen', on: !penOn }); // draw over the whole screen
+  else setDrawing(!drawOn);
+};
+$('wbFreeze').onclick = togglePause;
+addEventListener('keydown', e => { if (e.key === 'Escape' && drawOn) setDrawing(false); });
+$('wbUndo').onclick = async () => {
+  const target = state.peerId; if (!screenProducer || !overlays.has(target)) return;
+  try { const { key } = await rpc('wbUndo', { target }); if (key) { annotationRemove(target, key); penSend({ cmd: 'remove', id: key.slice(target.length + 1) }); } } catch (error) { fail(error); }
+};
+$('wbClear').onclick = () => {
+  const target = state.peerId; if (!screenProducer || !overlays.has(target)) return;
+  annotationClear(target); rpc('wbClear', { target }).catch(fail); penSend({ cmd: 'clear' });
+};
+
+// ---- Screen pen (optional helper, `npm run overlay`): draws over your whole screen and any app.
+// It only works with an "Entire screen" share, because its marks are positioned on the whole display.
+// Its strokes come here and go out as ordinary whiteboard strokes, so pause/undo/clear/late joiners all work the same.
+let penWs = null, penOn = false;
+function penSend(message) { if (penWs?.readyState === WebSocket.OPEN) penWs.send(JSON.stringify(message)); }
+function penStop() {
+  const socket = penWs; penWs = null; penOn = false;
+  try { socket?.close(); } catch { /* already closed */ } // closing hides the screen pen
+}
+function penStart() {
+  penStop();
+  if (screenStream?.getVideoTracks()[0]?.getSettings().displaySurface !== 'monitor') {
+    $('status').textContent = 'You shared a window or tab, so \u270F\uFE0F draws on your screen tile here only. To draw over your whole screen and other apps, stop and share your Entire screen.';
+    return;
+  }
+  const noPen = 'Screen pen is not running, so \u270F\uFE0F draws on your screen tile here only. To draw over your whole screen and other apps, start the server with "npm start" on this computer (or run "npm run overlay"), then share again.';
+  let socket; try { socket = new WebSocket('ws://127.0.0.1:47321'); } catch { $('status').textContent = noPen; return; }
+  penWs = socket; let opened = false;
+  socket.onopen = () => {
+    opened = true; penSend({ cmd: 'show' }); penSend({ cmd: 'paused', on: frozen.has(state.peerId) });
+    $('status').textContent = 'Screen pen on: \u270F\uFE0F draws over your whole screen and any app (Cmd/Ctrl+Shift+D toggles it, Esc stops).';
+    event('screenPen', { state: 'connected' });
+  };
+  socket.onmessage = ({ data }) => {
+    let m; try { m = JSON.parse(data); } catch { return; }
+    if (m.event === 'seg') penSegment(m);
+    else if (m.event === 'pen') { penOn = Boolean(m.on); updateBar(); }
+    else if (m.event === 'pause') togglePause();
+    else if (m.event === 'undo') $('wbUndo').onclick();
+    else if (m.event === 'clear') $('wbClear').onclick();
+  };
+  socket.onclose = () => {
+    if (penWs !== socket) return;
+    penWs = null; penOn = false; updateBar();
+    if (!opened && screenProducer) $('status').textContent = noPen;
+    else if (opened && screenProducer) $('status').textContent = 'Screen pen closed; \u270F\uFE0F now draws on your screen tile here only.';
+  };
+}
+function penSegment(m) {
+  if (!screenProducer || typeof m.id !== 'string' || !/^[a-zA-Z0-9_-]{1,40}$/.test(m.id) || !/^#[0-9a-f]{6}$/i.test(m.color) || !Array.isArray(m.pts)) return;
+  const clamp = n => Math.min(1, Math.max(0, Number(n) || 0));
+  const data = { id: m.id, target: state.peerId, color: m.color, size: Math.min(40, Math.max(1, Math.round(Number(m.size) * 1280) || 6)),
+    pts: m.pts.slice(0, 200).filter(p => Array.isArray(p) && p.length === 2).map(p => [clamp(p[0]), clamp(p[1])]) };
+  if (!data.pts.length) return;
+  annotationRemote({ key: `${state.peerId}:${data.id}`, ...data });
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ method: 'wbSegment', data }));
 }
 $('username').value = params.get('username') || '';
 $('join').onclick = join; $('leave').onclick = leave;

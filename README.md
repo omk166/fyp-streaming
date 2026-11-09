@@ -6,7 +6,7 @@ Initial measured results: [concise results table](artifacts/SUMMARY.md), [Word r
 
 Controlled Linux experiments, when executed, are documented separately in [network results](artifacts/NETWORK_RESULTS.md), with [kernel shaping evidence](artifacts/network) and a [numeric CSV](artifacts/network-results.csv). Check exit codes represent basic media progress, not acceptable delay or perceptual quality.
 
-This is a local experiment environment. It has no authentication, host roles, recording, translation or TURN service yet. Do not expose this prototype as a public meeting service. Usernames, chat, mic/camera controls, local video pinning and screen sharing are included for basic functional tests. Reconnection requires leaving and joining again.
+This is a local experiment environment. It has no authentication, host roles, recording, translation or TURN service yet. Do not expose this prototype as a public meeting service. Usernames, chat, mic/camera controls, local video pinning and screen sharing are included for basic functional tests. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
 
 ## Run locally
 
@@ -23,6 +23,17 @@ npm start
 Open http://127.0.0.1:3000 in two browser tabs. Enter your name and use the same room name. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
 
 Alternatively, start Docker Desktop and run `docker compose up --build`. The supplied Docker configuration binds to localhost only. Access from additional laptops needs a separately configured reachable media address and HTTPS for browser capture; it is not enabled by this local configuration.
+
+## Screen drawing
+
+Marks are drawn on a layer over the **video** of a shared screen and relayed through the server as coordinates (0..1 of the picture), so every viewer sees them in the same place whatever their window size.
+
+- **Toolbar.** While you share, a toolbar appears at the right edge: draw (pen), pop out, pause/resume, pen color and size, undo, clear. Esc stops drawing. Only the sharer draws; marks are removed when the share stops. Late joiners receive the current marks and pause state.
+- **Draw over your whole screen and any app (screen pen).** On a Mac or Windows PC, `npm start` starts it with the server (first run installs it; `SCREEN_PEN=0` turns it off). If you use a deployed server instead, run `npm run overlay` on the computer you present from. Then share your **Entire screen**: the pen button now draws directly on your screen, over any window, and a small toolbar appears at the right edge of your screen (pen, pause, colors, undo, clear). Cmd/Ctrl+Shift+D toggles the pen, Esc stops. It opens and closes with your share. What you draw goes through the page like any other mark, so pause, undo, clear and late joiners behave the same. The screen pen asks to be left out of screen capture, so viewers get the marks only through the page layer.
+- **Without the screen pen (pop-out, Chrome/Edge 116+).** The pop-out button opens an always-on-top window with a live preview of your shared screen plus the toolbar; draw on that preview while you are on other pages or apps. If you share your entire screen, the pop-out shows up inside the share as a small mirrored preview.
+- **Pause.** Viewers see a still of your screen: the exact frame you paused on, sent with the pause, so late joiners see the same picture. Your own screen stays live. The drawing layer is separate from the picture, so marks keep reaching viewers live while paused, and undo/clear do not resume the share. Resume shows your live screen again and keeps the marks.
+
+Status: verified with scripted end-to-end runs (real server, Chrome 156, a fake "Entire screen" capture, the real screen-pen app with synthetic pen input) covering drawing, pause, drawing while paused, undo, clear, late joiners, pop-out and resume. Not yet verified: drawing with a real mouse on the screen pen, whether Chrome's real screen capture honours the pen's capture exclusion (if not, viewers see each mark twice in the same place), multi-device use. Limits: the screen pen covers the primary display only and needs an Entire-screen share; no eraser; "only the sharer can draw or clear" is enforced by the page, not the server (pause is server-enforced).
 
 ## Automated local measurements
 

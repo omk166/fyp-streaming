@@ -1,0 +1,16 @@
+{
+  "name": "fyp-screen-pen",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Draw over your whole screen and any app while sharing (helper for the FYP streaming lab)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.3"
+  }
+}

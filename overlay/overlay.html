@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:transparent;font:16px system-ui;user-select:none}
+#board{position:fixed;inset:0;width:100%;height:100%}
+body.pen #board{cursor:crosshair}
+#bar{position:fixed;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;padding:8px;background:#1d2a3df5;border:1px solid #70849c;border-radius:14px}
+#bar button{width:40px;height:38px;padding:0;border:1px solid #70849c;border-radius:8px;background:#b5f1dd;font-size:18px;cursor:pointer}
+#bar button[aria-pressed=true]{background:#ffdd88}
+#bar .dot{height:24px;border-radius:12px;border:2px solid #fff3}
+#bar .dot.sel{border-color:#fff}
+</style></head>
+<body>
+<canvas id="board"></canvas>
+<div id="bar">
+  <button id="pen" aria-pressed="false" title="Draw (Cmd/Ctrl+Shift+D, Esc stops)">&#9999;&#65039;</button>
+  <button id="pause" aria-pressed="false" title="Pause the share for viewers">&#9208;</button>
+  <button class="dot sel" data-color="#ff2d2d" style="background:#ff2d2d" title="Red"></button>
+  <button class="dot" data-color="#ffd400" style="background:#ffd400" title="Yellow"></button>
+  <button class="dot" data-color="#2ecc40" style="background:#2ecc40" title="Green"></button>
+  <button class="dot" data-color="#2d8cff" style="background:#2d8cff" title="Blue"></button>
+  <button id="undo" title="Undo">&#8617;</button>
+  <button id="clear" title="Clear">&#129529;</button>
+</div>
+<script src="overlay.js"></script>
+</body></html>

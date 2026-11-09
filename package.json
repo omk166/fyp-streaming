@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "esbuild client/main.js --bundle --format=esm --outfile=public/bundle.js",
     "start": "node server.js",
     "test:smoke": "node scripts/smoke.mjs",
-    "report": "python scripts/report.py"
+    "report": "python scripts/report.py",
+    "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start"
   },
   "dependencies": {
     "express": "^5.1.0",
