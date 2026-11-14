@@ -26,7 +26,7 @@ export function meetingTarget(value) {
   try {
     const target = new URL(value, 'http://meeting.invalid');
     if (target.origin !== 'http://meeting.invalid' || !['/', '/index.html'].includes(target.pathname)) return '/';
-    return `${target.pathname}${target.search}`;
+    return `${target.pathname}${target.search}${target.hash}`;
   } catch { return '/'; }
 }
 
@@ -228,7 +228,7 @@ export function createAuth({
     const status = error.status === 503 ? 503 : error.type === 'entity.too.large' ? 413 : error.type === 'entity.parse.failed' ? 400 : 500;
     res.status(status).json({ error: status === 503 ? error.message : status === 400 ? 'Invalid request.' : status === 413 ? 'Request too large.' : 'Sign-in could not be completed. Please try again.' });
   });
-  return { router, getSession, sameOrigin,
+  return { router, getSession, sameOrigin, database: db,
     requireSession(req, res, next) {
       res.set('Cache-Control', 'no-store');
       if (!getSession(req)) return res.redirect(`/auth?next=${encodeURIComponent(meetingTarget(req.originalUrl))}`);

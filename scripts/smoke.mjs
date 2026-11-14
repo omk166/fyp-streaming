@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+import { createTestRoom } from './test-room.mjs';
 const count = Number(process.env.PARTICIPANTS || 2);
 const seconds = Number(process.env.DURATION || 30);
 const mode = process.env.MODE || 'h264';
@@ -17,6 +18,8 @@ const contexts = [], pages = [], errors = [];
 const checks = [];
 let passed = false;
 try {
+  const base = process.env.BASE_URL || 'http://127.0.0.1:3000';
+  const testRoom = await createTestRoom(browser, base, runId);
   for (let i = 0; i < count; i++) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); contexts.push(context);
     const base = process.env.BASE_URL || 'http://127.0.0.1:3000';
@@ -24,7 +27,7 @@ try {
     if (!entry.ok()) throw Error(`Guest entry failed: ${entry.status()}`);
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', error => errors.push({ peer: i, message: error.message }));
-    await page.goto(`${base}/?synthetic=1&mode=${mode}&room=${runId.slice(0,48)}&run=${runId}-peer${i}`);
+    await page.goto(`${base}/?synthetic=1&mode=${mode}&${testRoom.query}&run=${runId}-peer${i}${testRoom.fragment}`);
     await page.getByRole('button', { name: 'Join room', exact: true }).click();
     await page.waitForFunction(() => window.lab?.joined, null, { timeout: 30000 });
   }

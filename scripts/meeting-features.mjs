@@ -1,11 +1,13 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
+import { createTestRoom } from './test-room.mjs';
 
 const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || 'msedge', args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu', '--disable-accelerated-video-encode', '--disable-accelerated-video-decode'] });
 const pages = [], errors = [];
 const base = process.env.BASE_URL || 'http://127.0.0.1:3100';
 const room = `features-${Date.now()}`;
 try {
+  const testRoom = await createTestRoom(browser, base, room);
   for (const name of ['Alice', 'Bob', '<b>Charlie</b>']) {
     const context = await browser.newContext();
     const entry = await context.request.post(`${base}/api/auth/guest`, { headers: { Origin: new URL(base).origin }, data: { name } });
@@ -27,7 +29,7 @@ try {
     });
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(`${base}/?synthetic=1&room=${room}`);
+    await page.goto(`${base}/?synthetic=1&${testRoom.query}${testRoom.fragment}`);
     await page.waitForFunction(() => !document.querySelector('#join').disabled);
     assert.equal(await page.locator('#username').inputValue(), name);
     await page.locator('#join').click();

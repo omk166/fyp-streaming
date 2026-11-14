@@ -1,4 +1,5 @@
 import { Device } from 'mediasoup-client';
+import { setupRooms } from './rooms.js';
 let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
 // Look in the pop-out window too: the toolbar and screen tile move there while it is open.
 const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
@@ -11,8 +12,10 @@ const tiles = new Map(), participants = new Map(), reactionTimers = new Set();
 const reactionIcons = { 'thumbs-up': '\u{1F44D}', heart: '\u{2764}\u{FE0F}', laugh: '\u{1F602}' };
 let serial = 0;
 const pending = new Map(), seen = new Set();
-const entryUrl = () => `/auth?next=${encodeURIComponent(location.pathname + location.search)}`;
+const entryUrl = () => `/auth?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
 let identity = null;
+const roomControls = setupRooms({ $, identity: () => identity, joined: () => state.joined,
+  onChange: value => { state.room = value; }, onError: fail });
 async function loadIdentity() {
   try {
     const response = await fetch('/api/auth/session', { cache: 'no-store' });
@@ -22,7 +25,8 @@ async function loadIdentity() {
     $('username').value = identity.name;
     $('identity').textContent = `${identity.kind === 'guest' ? 'Guest' : 'Signed in'} · ${identity.name}`;
     $('logout').textContent = identity.kind === 'guest' ? 'Exit guest session' : 'Sign out';
-    $('logout').disabled = false; $('join').disabled = false;
+    $('logout').disabled = false;
+    await roomControls.init();
   } catch (error) { fail(error); }
 }
 $('logout').onclick = async () => {
@@ -51,7 +55,7 @@ function refreshParticipantUI() {
   $('participants').replaceChildren();
   for (const peer of participants.values()) {
     const item = document.createElement('li'); item.dataset.peerId = peer.peerId;
-    item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}`;
+    item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.role === 'owner' ? ' (Owner)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}`;
     $('participants').append(item);
   }
   const raised = participants.get(state.peerId)?.handRaised || false;
@@ -234,6 +238,10 @@ async function join() {
         participants.set(message.data.peerId, message.data); refreshParticipantUI();
       } else if (message.event === 'participantLeft') {
         participants.delete(message.data.peerId); refreshParticipantUI();
+      } else if (message.event === 'roomSettings') {
+        roomControls.changed(message.data);
+      } else if (message.event === 'roomEnded') {
+        leave(); roomControls.changed(message.data); $('status').textContent = 'The owner ended this room.';
       } else if (message.event === 'wbSegment') {
         annotationRemote(message.data);
       } else if (message.event === 'wbFreeze') {
@@ -251,9 +259,10 @@ async function join() {
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
     ws.onclose = ({ code }) => {
       if (code === 1008) { leave(); location.replace(entryUrl()); return; }
+      if (code === 4000) { leave(); $('status').textContent = 'This room has ended.'; return; }
       if (state.joined) { fail(Error('Disconnected; rejoin required')); leave(); }
     };
-    const info = await rpc('join', { room: $('room').value, username: $('username').value.trim() });
+    const info = await rpc('join', roomControls.credentials());
     state.peerId = info.peerId; state.username = info.username;
     for (const peer of info.participants) participants.set(peer.peerId, peer);
     annotationsLoad(info.board || []); frozen.clear(); for (const f of info.frozen || []) frozen.set(f.target, f.image || null);
@@ -273,6 +282,7 @@ async function join() {
     state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; state.joinMs = performance.now() - started;
+    roomControls.refresh();
     event('joined', { joinMs: state.joinMs });
     for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = false;
 
@@ -299,6 +309,7 @@ function leave() {
   for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = true;
   $('wbBar').hidden = true; pipWin?.close(); penStop(); clearTimeout(wbTimer); setDrawing(false); overlays.clear(); annotations.clear(); frozen.clear();
   for (const id of ['join','room','mode','synthetic','username']) $(id).disabled = false;
+  roomControls.refresh();
   $('mic').textContent = 'Mute microphone'; $('camera').textContent = 'Pause camera';
   event('left');
 }
@@ -581,5 +592,4 @@ $('export').onclick = () => {
 };
 if (params.has('synthetic')) $('synthetic').checked = true;
 if (params.has('mode')) $('mode').value = params.get('mode');
-if (params.has('room')) $('room').value = params.get('room');
 loadIdentity();

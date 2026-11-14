@@ -6,7 +6,7 @@ Initial measured results: [concise results table](artifacts/SUMMARY.md), [Word r
 
 Controlled Linux experiments, when executed, are documented separately in [network results](artifacts/NETWORK_RESULTS.md), with [kernel shaping evidence](artifacts/network) and a [numeric CSV](artifacts/network-results.csv). Check exit codes represent basic media progress, not acceptable delay or perceptual quality.
 
-This is a research prototype. A separate entry page supports email/password accounts, optional Google sign-in, and explicit guest sessions. Meeting names come from the server-side session. Host roles, protected room admission, recording, translation and TURN remain separate work; an account does not yet restrict which room someone may enter. Chat, mic/camera controls, local video pinning, screen sharing, reactions and raised hands are included. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
+This is a research prototype. A separate entry page supports email/password accounts, optional Google sign-in, and explicit guest sessions. Meeting names come from the server-side session. Rooms require an invitation or ownership; owners can lock admission, replace invitations and end rooms. Recording, translation and TURN remain separate work. Chat, mic/camera controls, local video pinning, screen sharing, reactions and raised hands are included. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
 
 ## Run locally
 
@@ -20,7 +20,7 @@ npm run build
 npm start
 ```
 
-Open http://127.0.0.1:3000. Log in, create an account, or choose Guest and enter a name, then use the same room name on each endpoint. Use separate browser profiles or private windows for different identities; tabs in one profile share a session. Links such as `/?room=team` preserve their parameters through the entry page. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
+Open http://127.0.0.1:3000. Log in, create an account, or choose Guest and enter a name, then use the same room name on each endpoint. Use separate browser profiles or private windows for different identities; tabs in one profile share a session. Invitation links preserve their room and fragment token through the entry page. A bare room name no longer creates or admits someone to a room. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
 
 Alternatively, start Docker Desktop and run `docker compose up --build`. The supplied Docker configuration binds to localhost only. Access from additional laptops needs a separately configured reachable media address and HTTPS for browser capture; it is not enabled by this local configuration.
 
@@ -32,7 +32,7 @@ Passwords use salted scrypt (N=32768, r=8, p=3), and only session-token hashes a
 
 Data lives in `data/auth.sqlite` by default (or `AUTH_DB_PATH`). Keep that directory private and persistent. Docker Compose mounts a named `auth-data` volume; do not remove it unless intentionally deleting accounts. Back up a stopped database, or use a consistent SQLite backup including its WAL rather than copying an actively written main file alone. Database files and `.env` are ignored by Git and excluded from the Docker build context.
 
-Email ownership verification, password reset, account linking, and room access permissions are not included in this first feature. Email signup does not prove ownership of an email address. Google accounts are keyed by Google's verified subject ID. An email/password account is never silently linked to Google by matching an email: use the original method if that address is already registered. Google access/refresh tokens are not retained. Future protected-room ownership must use the internal user ID, not a display name or unverified email.
+Email ownership verification, password reset and account linking are not included. Email signup does not prove ownership of an email address. Google accounts are keyed by Google's verified subject ID. An email/password account is never silently linked to Google by matching an email: use the original method if that address is already registered. Google access/refresh tokens are not retained. Room ownership uses the internal user ID, not a display name or unverified email.
 
 ### Enable Google on the Dubai server
 
@@ -54,6 +54,16 @@ BASE_URL=http://127.0.0.1:3100 BROWSER_CHANNEL=chrome node scripts/meeting-featu
 ```
 
 `test:auth` uses temporary databases and a mocked Google provider to check credential validation, persistence, expiry, rotation/revocation, CSRF/origin checks, secure cookies, limits, redirects, state/nonce/PKCE and account collisions. `test:entry` uses a real local SFU and browser to check the page, account/guest media and chat, preserved room links, rejected anonymous/cross-origin signaling, identity spoofing, logout across tabs and mobile layout. It creates synthetic test accounts on the target server: use a local/disposable test database. Live Google consent/sign-in is still a manual test requiring your configured OAuth client. The existing smoke and meeting checks now establish guest sessions before joining.
+
+## Protected rooms
+
+Log in to an account, enter a room name and choose **Create room**. Guests join through an invitation; they cannot create or manage rooms. Owners can return through **Your rooms** without an invitation. Duplicate display names never grant ownership.
+
+Use **Copy invitation** to share a link. Its random bearer token is in the URL fragment (after `#invite=`), so it is not sent in normal HTTP request URLs or referrers. The browser sends it over authenticated, same-origin signaling/API requests. Anyone holding a current invitation can join an unlocked room, including as a guest. Keep invitations private. Only token hashes are stored in SQLite, so reopening an owner page requires **New invitation** if the old full link was not saved. That action invalidates previous links for future joins; it leaves existing participants connected.
+
+**Lock room** prevents new non-owner joins while existing calls continue. **End room** closes all participants and permanently disables that room. Rooms and invitations expire seven days after creation. The server checks these rules during admission, independently of UI controls. Ownership and invitation hashes persist in the same private database as accounts; active media/drawings remain in memory.
+
+`npm run test:rooms` checks API permissions, admission, rotation, lock, ending and expiry. With the local SFU running, `BROWSER_CHANNEL=chrome npm run test:room-ui` checks the owner UI, real guest media, rejected forged ownership/missing invitations, locks, replacement links, owner reload and room-end disconnection. Test tools create disposable owner accounts and invitation-protected rooms on the target server.
 
 ## Screen drawing
 

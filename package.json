@@ -12,6 +12,8 @@
     "test:smoke": "node scripts/smoke.mjs",
     "test:auth": "node --test tests/auth.test.mjs",
     "test:entry": "node scripts/auth-entry.mjs",
+    "test:rooms": "node --test tests/rooms.test.mjs",
+    "test:room-ui": "node scripts/protected-rooms.mjs",
     "report": "python scripts/report.py",
     "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start"
   },

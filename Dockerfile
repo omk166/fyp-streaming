@@ -5,6 +5,7 @@ COPY package*.json ./
 RUN npm ci
 COPY server.js ./
 COPY auth.js ./
+COPY rooms.js ./
 COPY client ./client
 COPY public ./public
 RUN npm run build

@@ -2,11 +2,12 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { WebSocket } from 'ws';
+import { createTestRoom } from './test-room.mjs';
 
 const base = process.env.BASE_URL || 'http://127.0.0.1:3100';
 const origin = new URL(base).origin;
 const room = `entry-${Date.now()}`;
-const target = `/?synthetic=1&room=${room}`;
+let target;
 const email = `${room}@example.test`, password = 'four memorable testing words';
 const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || undefined,
   args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu', '--disable-accelerated-video-encode', '--disable-accelerated-video-decode'] });
@@ -20,11 +21,14 @@ async function rejectedUpgrade(cookie, requestOrigin) {
   });
 }
 try {
+  const testRoom = await createTestRoom(browser, base, room);
+  target = `/?synthetic=1&${testRoom.query}${testRoom.fragment}`;
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + target);
   await page.waitForURL('**/auth?**');
-  assert.equal(new URL(page.url()).searchParams.get('next'), target);
+  assert.equal(new URL(page.url()).searchParams.get('next'), target.split('#')[0]);
+  assert.equal(new URL(page.url()).hash, testRoom.fragment);
   await page.locator('#signupTab').click();
   await page.locator('#signupName').fill('Account Alice');
   await page.locator('#signupEmail').fill(email);
@@ -56,7 +60,7 @@ try {
   const spoof = new WebSocket(origin.replace(/^http/, 'ws'), { headers: { Origin: origin, Cookie: cookie } });
   await new Promise((resolve, reject) => { spoof.once('open', resolve); spoof.once('error', reject); });
   const reply = new Promise(resolve => spoof.once('message', data => resolve(JSON.parse(data.toString()))));
-  spoof.send(JSON.stringify({ id: 1, method: 'join', data: { room: `${room}-spoof`, username: 'Forged Host', role: 'host' } }));
+  spoof.send(JSON.stringify({ id: 1, method: 'join', data: { room: testRoom.room.id, invitation: testRoom.invitation, username: 'Forged Host', role: 'host' } }));
   assert.equal((await reply).result.username, 'Account Alice');
   await new Promise(resolve => { spoof.once('close', resolve); spoof.close(); });
   await page.locator('#logout').click();

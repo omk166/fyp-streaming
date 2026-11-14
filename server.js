@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
 import { createAuth } from './auth.js';
+import { createRoomAccess } from './rooms.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
@@ -47,6 +48,13 @@ const auth = createAuth({ secureCookies: Boolean(tls), onRevoke(hash) {
 app.disable('x-powered-by');
 app.use((_req, res, next) => { res.set('Referrer-Policy', 'no-referrer'); res.set('X-Content-Type-Options', 'nosniff'); next(); });
 app.use(auth.router);
+const roomAccess = createRoomAccess({ auth, onChange(data) {
+  const room = rooms.get(data.id);
+  if (!room) return;
+  broadcast(room, null, data.ended ? 'roomEnded' : 'roomSettings', { id: data.id, locked: data.locked, ended: data.ended });
+  if (data.ended) for (const peer of room.peers) peer.ws.close(4000, 'Room ended');
+} });
+app.use(roomAccess.router);
 app.get(['/auth', '/auth.html'], (_req, res) => res.set({ 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" }).sendFile(fileURLToPath(new URL('./public/auth.html', import.meta.url))));
 app.get(['/', '/index.html'], auth.requireSession, (_req, res) => res.sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
 app.use(express.static('public', { index: false }));
@@ -74,7 +82,7 @@ function owned(map, id) {
   return item;
 }
 function participant(peer) {
-  return { peerId: peer.id, username: peer.username, kind: peer.identity.kind, micMuted: peer.micMuted, handRaised: peer.handRaised };
+  return { peerId: peer.id, username: peer.username, kind: peer.identity.kind, role: peer.role, micMuted: peer.micMuted, handRaised: peer.handRaised };
 }
 function sharing(room, target) {
   return typeof target === 'string' && [...room.peers].some(p => p.id === target && [...p.producers.values()].some(pr => pr.appData.source === 'screen'));
@@ -94,13 +102,17 @@ const STILL = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/]+=*$/;
 async function action(peer, method, data) {
   if (method === 'join') {
     if (peer.room || !/^[a-zA-Z0-9_-]{1,48}$/.test(data.room)) throw Error('Invalid room');
+    const access = roomAccess.authorize(peer.identity, data.room, data.invitation);
     // Identity comes from the authenticated/guest session, never a client-supplied label.
     peer.username = peer.identity.name;
-    peer.room = await getRoom(data.room);
+    const room = await getRoom(data.room);
+    try { roomAccess.authorize(peer.identity, data.room, data.invitation); }
+    catch (error) { if (!room.peers.size) { room.router.close(); rooms.delete(data.room); } throw error; }
+    peer.role = access.role; peer.room = room;
     peer.roomId = data.room;
     peer.room.peers.add(peer);
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
+    return { room: access, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
