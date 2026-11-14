@@ -63,7 +63,7 @@ try {
     for (const page of pages) await page.waitForFunction(() => document.querySelector('#reactions').children.length === 0);
   }
   await bob.locator('#mic').click(); await bob.locator('#hand').click();
-  for (const page of pages) await page.waitForFunction(() => [...document.querySelectorAll('#participants li')].some(t => /^Bob \(Guest\)( \(You\))?$/.test(t.textContent)));
+  for (const page of pages) await page.waitForFunction(() => [...document.querySelectorAll('#participants li')].some(t => /^Bob \(Guest\)( \(You\))?( · Speaking)?$/.test(t.textContent)));
   await alice.evaluate(() => { window.cancelShare = true; });
   await alice.locator('#screen').click();
   await alice.waitForFunction(() => !document.querySelector('#screen').disabled);

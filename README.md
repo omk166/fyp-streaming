@@ -65,6 +65,10 @@ Use **Copy invitation** to share a link. Its random bearer token is in the URL f
 
 `npm run test:rooms` checks API permissions, admission, rotation, lock, ending and expiry. With the local SFU running, `BROWSER_CHANNEL=chrome npm run test:room-ui` checks the owner UI, real guest media, rejected forged ownership/missing invitations, locks, replacement links, owner reload and room-end disconnection. Test tools create disposable owner accounts and invitation-protected rooms on the target server.
 
+## Active speaker
+
+Microphone RTP audio levels drive a green camera-tile outline and a Speaking label in the participant list. No speech recognition or AI is used. Muting, silence and departure clear the indicator; pinning stays local and is not changed by speaker events. Only microphone producers are observed, so screen sound does not count as a person speaking. `BROWSER_CHANNEL=chrome npm run test:speaker` exercises switching, silence, camera-off speaking and cleanup using synthetic microphone audio over the real SFU.
+
 ## Screen drawing
 
 Marks are drawn on a layer over the **video** of a shared screen and relayed through the server as coordinates (0..1 of the picture), so every viewer sees them in the same place whatever their window size.

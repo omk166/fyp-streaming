@@ -34,7 +34,14 @@ const creating = new Map();
 async function getRoom(id) {
   if (rooms.has(id)) return rooms.get(id);
   if (!creating.has(id)) creating.set(id, (async () => {
-    const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
+    const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), activeSpeaker: null, board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
+    room.audioLevels = await room.router.createAudioLevelObserver({ maxEntries: 1, threshold: -65, interval: 300 });
+    room.audioLevels.on('volumes', volumes => {
+      const producer = volumes[0]?.producer;
+      if (!producer || producer.closed || producer.paused) return;
+      setActiveSpeaker(room, producer.appData.peerId);
+    });
+    room.audioLevels.on('silence', () => setActiveSpeaker(room, null));
     rooms.set(id, room);
     return room;
   })());
@@ -76,6 +83,11 @@ function emit(peer, event, data) {
 function broadcast(room, except, event, data) {
   for (const peer of room.peers) if (peer !== except) emit(peer, event, data);
 }
+function setActiveSpeaker(room, peerId) {
+  if (room.activeSpeaker === peerId) return;
+  room.activeSpeaker = peerId;
+  broadcast(room, null, 'activeSpeaker', { peerId });
+}
 function owned(map, id) {
   const item = map.get(id);
   if (!item || item.closed) throw Error('Object unavailable or not owned by this connection');
@@ -112,7 +124,7 @@ async function action(peer, method, data) {
     peer.roomId = data.room;
     peer.room.peers.add(peer);
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { room: access, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
+    return { room: access, activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
@@ -132,12 +144,14 @@ async function action(peer, method, data) {
       if (!['microphone','camera','screen'].includes(source) || (source === 'microphone' ? data.kind !== 'audio' : data.kind !== 'video') || [...peer.producers.values()].some(p => p.appData.source === source)) throw Error('Invalid media source');
       const producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters, appData: { source, peerId: peer.id, username: peer.username } });
       peer.producers.set(producer.id, producer);
+      if (source === 'microphone') await room.audioLevels.addProducer({ producerId: producer.id });
       broadcast(room, peer, 'producer', { producerId: producer.id });
       return { id: producer.id };
     }
     case 'closeProducer': {
       const producer = owned(peer.producers, data.id);
       producer.close(); peer.producers.delete(producer.id);
+      if (producer.appData.source === 'microphone' && room.activeSpeaker === peer.id) setActiveSpeaker(room, null);
       if (producer.appData.source === 'screen') { clearTarget(room, peer.id); broadcast(room, null, 'wbClear', { target: peer.id, silent: true }); }
       return {};
     }
@@ -164,6 +178,7 @@ async function action(peer, method, data) {
       if (typeof data.paused !== 'boolean') throw Error('Invalid pause state');
       await (data.paused ? producer.pause() : producer.resume());
       if (producer.appData.source === 'microphone') {
+        if (data.paused && room.activeSpeaker === peer.id) setActiveSpeaker(room, null);
         peer.micMuted = data.paused; broadcast(room, null, 'participant', participant(peer));
       }
       return {};
@@ -256,6 +271,7 @@ wss.on('connection', (ws, req) => {
       for (const t of peer.transports.values()) t.close();
       const room = peer.room;
       if (room) {
+        if (room.activeSpeaker === peer.id) setActiveSpeaker(room, null);
         room.peers.delete(peer); clearTarget(room, peer.id);
         broadcast(room, null, 'participantLeft', { peerId: peer.id });
         if (!room.peers.size) { room.router.close(); rooms.delete(peer.roomId); }

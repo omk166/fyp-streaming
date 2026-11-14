@@ -4,7 +4,7 @@ let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see 
 // Look in the pop-out window too: the toolbar and screen tile move there while it is open.
 const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const state = window.lab = { samples: [], events: [], consumers: new Map(), producers: [], joined: false, errors: [] };
+const state = window.lab = { samples: [], events: [], consumers: new Map(), producers: [], joined: false, activeSpeaker: null, errors: [] };
 let ws, device, send, recv, stream, timer, audioContext, animation;
 let screenStream, screenProducer, screenBusy = false, session = 0;
 let pinned = null;
@@ -50,12 +50,14 @@ function rpc(method, data = {}) {
 function refreshParticipantUI() {
   for (const tile of tiles.values()) {
     const peer = participants.get(tile.dataset.peerId);
-    tile.querySelector('.participant-status').textContent = peer ? `${peer.micMuted ? '\u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}` : '';
+    const speaking = peer && peer.peerId === state.activeSpeaker;
+    tile.classList.toggle('active-speaker', Boolean(speaking && tile.dataset.source === 'camera'));
+    tile.querySelector('.participant-status').textContent = peer ? `${peer.micMuted ? '\u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}${speaking ? ' · Speaking' : ''}` : '';
   }
   $('participants').replaceChildren();
   for (const peer of participants.values()) {
     const item = document.createElement('li'); item.dataset.peerId = peer.peerId;
-    item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.role === 'owner' ? ' (Owner)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}`;
+    item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.role === 'owner' ? ' (Owner)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}${peer.peerId === state.activeSpeaker ? ' · Speaking' : ''}`;
     $('participants').append(item);
   }
   const raised = participants.get(state.peerId)?.handRaised || false;
@@ -240,6 +242,8 @@ async function join() {
         participants.delete(message.data.peerId); refreshParticipantUI();
       } else if (message.event === 'roomSettings') {
         roomControls.changed(message.data);
+      } else if (message.event === 'activeSpeaker') {
+        state.activeSpeaker = message.data.peerId; refreshParticipantUI();
       } else if (message.event === 'roomEnded') {
         leave(); roomControls.changed(message.data); $('status').textContent = 'The owner ended this room.';
       } else if (message.event === 'wbSegment') {
@@ -264,6 +268,7 @@ async function join() {
     };
     const info = await rpc('join', roomControls.credentials());
     state.peerId = info.peerId; state.username = info.username;
+    state.activeSpeaker = info.activeSpeaker;
     for (const peer of info.participants) participants.set(peer.peerId, peer);
     annotationsLoad(info.board || []); frozen.clear(); for (const f of info.frozen || []) frozen.set(f.target, f.image || null);
     refreshParticipantUI();
@@ -293,6 +298,7 @@ async function join() {
 }
 function leave() {
   state.joined = false; session++;
+  state.activeSpeaker = null;
   for (const timer of reactionTimers) clearTimeout(timer); reactionTimers.clear();
   $('reactions').replaceChildren(); participants.clear(); refreshParticipantUI();
   screenProducer?.close(); screenProducer = null;
