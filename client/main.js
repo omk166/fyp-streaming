@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id) || pipWin?.document.getElementById(i
 const params = new URLSearchParams(location.search);
 const state = window.lab = { samples: [], events: [], consumers: new Map(), producers: [], joined: false, activeSpeaker: null, errors: [] };
 let ws, device, send, recv, stream, timer, audioContext, animation;
-let screenStream, screenProducer, screenBusy = false, session = 0;
+let screenStream, screenProducer, screenAudioProducer, screenBusy = false, session = 0;
 let pinned = null;
 const tiles = new Map(), participants = new Map(), reactionTimers = new Set();
 const reactionIcons = { 'thumbs-up': '\u{1F44D}', heart: '\u{2764}\u{FE0F}', laugh: '\u{1F602}' };
@@ -116,14 +116,15 @@ function render(track, id, muted = false, info = {}) {
   el.play().catch(error => event('playbackBlocked', { message: error.message }));
 }
 async function stopScreen() {
-  const producer = screenProducer; screenProducer = null;
+  const closing = [screenAudioProducer, screenProducer].filter(Boolean);
+  screenProducer = null; screenAudioProducer = null;
   screenStream?.getTracks().forEach(t => t.stop()); screenStream = null;
   removeTrack('screen-local');
-  if (producer) {
-    producer.close(); state.producers = state.producers.filter(p => p !== producer);
-    if (state.joined) await rpc('closeProducer', { id: producer.id });
-  }
+  for (const producer of closing) producer.close();
+  state.producers = state.producers.filter(p => !closing.includes(p));
   $('screen').textContent = 'Share screen'; $('wbBar').hidden = true; setDrawing(false); pipWin?.close(); penStop();
+  $('screenSound').disabled = false; $('screenAudioStatus').textContent = '';
+  for (const producer of closing) if (state.joined) await rpc('closeProducer', { id: producer.id });
 }
 async function shareScreen() {
   if (screenBusy || !state.joined) return;
@@ -133,13 +134,29 @@ async function shareScreen() {
   try {
     if (screenProducer) { await stopScreen(); return; }
     if (!navigator.mediaDevices.getDisplayMedia) throw Error('Screen sharing is unavailable in this browser');
-    captured = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const soundRequested = $('screenSound').checked;
+    captured = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: soundRequested });
     if (!state.joined || session !== currentSession) { captured.getTracks().forEach(t => t.stop()); return; }
     screenStream = captured;
     const track = captured.getVideoTracks()[0];
     const producer = await send.produce({ track, codec: device.rtpCapabilities.codecs.find(c => c.mimeType.toLowerCase() === ($('mode').value === 'vp9' ? 'video/vp9' : 'video/h264')), appData: { source: 'screen' } });
     if (!state.joined || session !== currentSession) { producer.close(); captured.getTracks().forEach(t => t.stop()); return; }
     screenProducer = producer; state.producers.push(producer);
+    const sound = captured.getAudioTracks()[0];
+    if (sound) {
+      screenAudioProducer = await send.produce({ track: sound, appData: { source: 'screenAudio' } });
+      if (!state.joined || session !== currentSession) { screenAudioProducer.close(); captured.getTracks().forEach(t => t.stop()); return; }
+      state.producers.push(screenAudioProducer);
+      sound.onended = async () => {
+        const ended = screenAudioProducer; screenAudioProducer = null;
+        if (!ended) return;
+        ended.close(); state.producers = state.producers.filter(p => p !== ended);
+        $('screenAudioStatus').textContent = 'Screen sound ended; video sharing continues.';
+        if (state.joined) try { await rpc('closeProducer', { id: ended.id }); } catch (error) { fail(error); }
+      };
+    }
+    $('screenSound').disabled = true;
+    $('screenAudioStatus').textContent = sound ? 'Screen sound is shared. Microphone mute controls your microphone only.' : soundRequested ? 'Video only: no sound was provided by the browser. For tab audio, choose a tab and enable Share tab audio.' : 'Screen sound is off for this share.';
     track.onended = () => stopScreen().catch(fail);
     render(track, 'screen-local', true, { source: 'screen' });
     $('screen').textContent = 'Stop sharing'; $('wbBar').hidden = false;
@@ -148,6 +165,7 @@ async function shareScreen() {
     if (track.readyState === 'ended') await stopScreen();
   } catch (error) {
     captured?.getTracks().forEach(t => t.stop());
+    if (screenProducer || screenAudioProducer) await stopScreen().catch(fail);
     if (error.name !== 'NotAllowedError' && state.joined) fail(error);
   } finally { screenBusy = false; $('screen').disabled = !state.joined; }
 }
@@ -302,8 +320,10 @@ function leave() {
   for (const timer of reactionTimers) clearTimeout(timer); reactionTimers.clear();
   $('reactions').replaceChildren(); participants.clear(); refreshParticipantUI();
   screenProducer?.close(); screenProducer = null;
+  screenAudioProducer?.close(); screenAudioProducer = null;
   screenStream?.getTracks().forEach(t => t.stop()); screenStream = null;
   $('screen').textContent = 'Share screen';
+  $('screenSound').disabled = false; $('screenAudioStatus').textContent = '';
   clearInterval(timer); clearInterval(animation);
   for (const p of pending.values()) p.reject(Error('Left room')); pending.clear();
   send?.close(); recv?.close(); stream?.getTracks().forEach(t => t.stop());
@@ -320,7 +340,7 @@ function leave() {
   event('left');
 }
 async function toggle(kind, id) {
-  const producer = state.producers.find(p => p.kind === kind);
+  const producer = state.producers.find(p => p.appData.source === (kind === 'audio' ? 'microphone' : 'camera'));
   if (!producer) return;
   const paused = !producer.paused;
   await rpc('pauseProducer', { id: producer.id, paused });

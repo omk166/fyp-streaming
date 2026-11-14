@@ -15,6 +15,7 @@
     "test:rooms": "node --test tests/rooms.test.mjs",
     "test:room-ui": "node scripts/protected-rooms.mjs",
     "test:speaker": "node scripts/active-speaker.mjs",
+    "test:screen-audio": "node scripts/screen-audio.mjs",
     "report": "python scripts/report.py",
     "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start"
   },

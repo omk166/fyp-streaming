@@ -65,6 +65,10 @@ Use **Copy invitation** to share a link. Its random bearer token is in the URL f
 
 `npm run test:rooms` checks API permissions, admission, rotation, lock, ending and expiry. With the local SFU running, `BROWSER_CHANNEL=chrome npm run test:room-ui` checks the owner UI, real guest media, rejected forged ownership/missing invitations, locks, replacement links, owner reload and room-end disconnection. Test tools create disposable owner accounts and invitation-protected rooms on the target server.
 
+## Screen audio
+
+Screen sound is a separate Opus producer associated with its screen video; microphone and screen audio have independent lifecycles. The server rejects screen audio without a screen and removes that sound when its screen closes. Audio-level speaker highlighting observes microphones only. `BROWSER_CHANNEL=chrome npm run test:screen-audio` uses generated display video/audio to verify receiver sound, microphone independence, the off option, source end and cleanup. Native screen/tab selection and real system audio still require checks on the demo devices.
+
 ## Active speaker
 
 Microphone RTP audio levels drive a green camera-tile outline and a Speaking label in the participant list. No speech recognition or AI is used. Muting, silence and departure clear the indicator; pinning stays local and is not changed by speaker events. Only microphone producers are observed, so screen sound does not count as a person speaking. `BROWSER_CHANNEL=chrome npm run test:speaker` exercises switching, silence, camera-off speaking and cleanup using synthetic microphone audio over the real SFU.
@@ -118,7 +122,7 @@ Choose your name at signup or guest entry. The meeting uses that session's name 
 
 Click **Pin** on a video to enlarge it in the centered stage above the other videos. Click **Unpin** to return to the grid. Pinning affects only your own view, and a departing or stopped pinned track returns your view to the grid.
 
-Click **Share screen** and choose a tab, window or display in the browser picker. Your camera and microphone remain available, and other participants receive the screen as a separate named video tile. Multiple people may share at once. Click **Stop sharing**, use the browser's stop control, or leave the meeting to end a share. Screen audio is not included. Display capture requires HTTPS (or localhost), a supporting desktop browser and any OS screen-recording permission.
+Click **Share screen** and choose a tab, window or display in the browser picker. Your camera and microphone remain available, and other participants receive the screen as a separate named video tile. Multiple people may share at once. Click **Stop sharing**, use the browser's stop control, or leave the meeting to end a share. The Include screen sound option requests audio too. Choose a browser tab and enable Share tab audio in the picker when available. Browser/OS/source support varies; if no audio track is returned, video sharing continues with a clear video-only message. Microphone mute does not mute shared sound. Stopping screen sharing removes both tracks, while an audio-only end leaves screen video running. Display capture requires HTTPS (or localhost), a supporting desktop browser and any OS screen-recording permission.
 
 Run `node scripts/meeting-features.mjs` against the updated server (default `http://127.0.0.1:3100`, override with `BASE_URL`) for the three-participant feature check using Edge. It substitutes a generated display stream to verify media publication, reception and lifecycle; manually check the browser picker and real screen contents on the demo devices. The existing smoke script also accepts `BASE_URL`.
 

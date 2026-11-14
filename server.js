@@ -139,9 +139,10 @@ async function action(peer, method, data) {
       await owned(peer.transports, data.id).connect({ dtlsParameters: data.dtlsParameters }); return {};
     case 'produce': {
       const transport = owned(peer.transports, data.transportId);
-      if (transport.appData.direction !== 'send' || peer.producers.size >= 3) throw Error('Invalid producer');
+      if (transport.appData.direction !== 'send' || peer.producers.size >= 4) throw Error('Invalid producer');
       const source = data.source || (data.kind === 'audio' ? 'microphone' : 'camera');
-      if (!['microphone','camera','screen'].includes(source) || (source === 'microphone' ? data.kind !== 'audio' : data.kind !== 'video') || [...peer.producers.values()].some(p => p.appData.source === source)) throw Error('Invalid media source');
+      if (!['microphone','camera','screen','screenAudio'].includes(source) || (['microphone','screenAudio'].includes(source) ? data.kind !== 'audio' : data.kind !== 'video') || [...peer.producers.values()].some(p => p.appData.source === source)) throw Error('Invalid media source');
+      if (source === 'screenAudio' && ![...peer.producers.values()].some(p => p.appData.source === 'screen')) throw Error('Share a screen before publishing its sound');
       const producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters, appData: { source, peerId: peer.id, username: peer.username } });
       peer.producers.set(producer.id, producer);
       if (source === 'microphone') await room.audioLevels.addProducer({ producerId: producer.id });
@@ -150,6 +151,10 @@ async function action(peer, method, data) {
     }
     case 'closeProducer': {
       const producer = owned(peer.producers, data.id);
+      if (producer.appData.source === 'screen') {
+        const sound = [...peer.producers.values()].find(p => p.appData.source === 'screenAudio');
+        if (sound) { sound.close(); peer.producers.delete(sound.id); }
+      }
       producer.close(); peer.producers.delete(producer.id);
       if (producer.appData.source === 'microphone' && room.activeSpeaker === peer.id) setActiveSpeaker(room, null);
       if (producer.appData.source === 'screen') { clearTarget(room, peer.id); broadcast(room, null, 'wbClear', { target: peer.id, silent: true }); }
