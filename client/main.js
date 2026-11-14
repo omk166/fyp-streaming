@@ -1,5 +1,6 @@
 import { Device } from 'mediasoup-client';
 import { setupRooms } from './rooms.js';
+import { setupRecording } from './recording-controls.js';
 let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
 // Look in the pop-out window too: the toolbar and screen tile move there while it is open.
 const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
@@ -16,6 +17,13 @@ const entryUrl = () => `/auth?next=${encodeURIComponent(location.pathname + loca
 let identity = null;
 const roomControls = setupRooms({ $, identity: () => identity, joined: () => state.joined,
   onChange: value => { state.room = value; }, onError: fail });
+const recordingControls = setupRecording({ $, state, rpc, tiles: () => [...tiles.values()],
+  audioTracks: () => [
+    ...(stream?.getAudioTracks() || []).map(track => ({ track, peerId: state.peerId })),
+    ...(screenStream?.getAudioTracks() || []).map(track => ({ track, peerId: state.peerId })),
+    ...[...state.consumers.values()].filter(c => c.kind === 'audio').map(c => ({ track: c.track, peerId: c.appData.peerId })),
+  ], notice: message => { $('status').textContent = message; } });
+Object.defineProperty(state, 'recorderRunning', { get: () => recordingControls.running });
 async function loadIdentity() {
   try {
     const response = await fetch('/api/auth/session', { cache: 'no-store' });
@@ -34,7 +42,7 @@ $('logout').onclick = async () => {
   try {
     const response = await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     if (!response.ok) throw Error('Could not sign out. Please try again.');
-    leave(); location.assign(entryUrl());
+    await leave(); location.assign(entryUrl());
   } catch (error) { fail(error); $('logout').disabled = false; }
 };
 function event(type, data = {}) { state.events.push({ timestamp: new Date().toISOString(), type, ...data }); }
@@ -241,6 +249,7 @@ async function join() {
   session++;
   $('join').disabled = true;
   const started = performance.now();
+  let receivedRecording = null;
   try {
     state.metadata = { runId: params.get('run') || crypto.randomUUID(), mode: $('mode').value, synthetic: $('synthetic').checked, syntheticClock: $('synthetic').checked ? 'timer' : null, userAgent: navigator.userAgent, startedAt: new Date().toISOString(), origin: location.origin };
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
@@ -262,6 +271,9 @@ async function join() {
         roomControls.changed(message.data);
       } else if (message.event === 'activeSpeaker') {
         state.activeSpeaker = message.data.peerId; refreshParticipantUI();
+      } else if (message.event === 'recordingState') {
+        receivedRecording = message.data;
+        recordingControls.update(message.data);
       } else if (message.event === 'roomEnded') {
         leave(); roomControls.changed(message.data); $('status').textContent = 'The owner ended this room.';
       } else if (message.event === 'wbSegment') {
@@ -279,8 +291,8 @@ async function join() {
       } else if (message.event === 'chat') { $('chat').textContent += `${message.data.username || 'Guest'}: ${message.data.text}\n`; event('chat'); }
     };
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
-    ws.onclose = ({ code }) => {
-      if (code === 1008) { leave(); location.replace(entryUrl()); return; }
+    ws.onclose = async ({ code }) => {
+      if (code === 1008) { await leave(); location.replace(entryUrl()); return; }
       if (code === 4000) { leave(); $('status').textContent = 'This room has ended.'; return; }
       if (state.joined) { fail(Error('Disconnected; rejoin required')); leave(); }
     };
@@ -305,6 +317,7 @@ async function join() {
     state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; state.joinMs = performance.now() - started;
+    recordingControls.update(receivedRecording || info.recording);
     roomControls.refresh();
     event('joined', { joinMs: state.joinMs });
     for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = false;
@@ -316,6 +329,7 @@ async function join() {
 }
 function leave() {
   state.joined = false; session++;
+  const recordingFinished = recordingControls.leave();
   state.activeSpeaker = null;
   for (const timer of reactionTimers) clearTimeout(timer); reactionTimers.clear();
   $('reactions').replaceChildren(); participants.clear(); refreshParticipantUI();
@@ -338,6 +352,7 @@ function leave() {
   roomControls.refresh();
   $('mic').textContent = 'Mute microphone'; $('camera').textContent = 'Pause camera';
   event('left');
+  return recordingFinished;
 }
 async function toggle(kind, id) {
   const producer = state.producers.find(p => p.appData.source === (kind === 'audio' ? 'microphone' : 'camera'));

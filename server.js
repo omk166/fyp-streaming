@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
 import { createAuth } from './auth.js';
 import { createRoomAccess } from './rooms.js';
+import { createRoomRecording } from './recording.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
@@ -35,6 +36,7 @@ async function getRoom(id) {
   if (rooms.has(id)) return rooms.get(id);
   if (!creating.has(id)) creating.set(id, (async () => {
     const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), activeSpeaker: null, board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
+    room.recording = createRoomRecording({ peers: room.peers, publish: data => broadcast(room, null, 'recordingState', data) });
     room.audioLevels = await room.router.createAudioLevelObserver({ maxEntries: 1, threshold: -65, interval: 300 });
     room.audioLevels.on('volumes', volumes => {
       const producer = volumes[0]?.producer;
@@ -122,13 +124,19 @@ async function action(peer, method, data) {
     catch (error) { if (!room.peers.size) { room.router.close(); rooms.delete(data.room); } throw error; }
     peer.role = access.role; peer.room = room;
     peer.roomId = data.room;
+    room.recording.beforeJoin();
     peer.room.peers.add(peer);
+    room.recording.membershipChanged();
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { room: access, activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
+    return { room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
   switch (method) {
+    case 'recordingRequest': return room.recording.request(peer);
+    case 'recordingConsent': return room.recording.consent(peer, data.id, data.allow);
+    case 'recordingStop': return room.recording.stop(peer, data.id);
+    case 'recordingFailed': return room.recording.failed(peer, data.id);
     case 'transport': {
       if (peer.transports.size >= 2 || !['send', 'recv'].includes(data.direction)) throw Error('Invalid transport');
       const transport = await room.router.createWebRtcTransport({ webRtcServer, appData: { direction: data.direction } });
@@ -277,9 +285,9 @@ wss.on('connection', (ws, req) => {
       const room = peer.room;
       if (room) {
         if (room.activeSpeaker === peer.id) setActiveSpeaker(room, null);
-        room.peers.delete(peer); clearTarget(room, peer.id);
+        room.peers.delete(peer); room.recording.memberLeft(peer.id); clearTarget(room, peer.id);
         broadcast(room, null, 'participantLeft', { peerId: peer.id });
-        if (!room.peers.size) { room.router.close(); rooms.delete(peer.roomId); }
+        if (!room.peers.size) { room.recording.dispose(); room.router.close(); rooms.delete(peer.roomId); }
       }
     });
   });

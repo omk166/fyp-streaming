@@ -7,6 +7,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "build": "esbuild client/main.js --bundle --format=esm --outfile=public/bundle.js",
     "start": "node --env-file-if-exists=.env server.js",
     "test:smoke": "node scripts/smoke.mjs",
@@ -16,6 +17,8 @@
     "test:room-ui": "node scripts/protected-rooms.mjs",
     "test:speaker": "node scripts/active-speaker.mjs",
     "test:screen-audio": "node scripts/screen-audio.mjs",
+    "test:recording-policy": "node --test tests/recording.test.mjs",
+    "test:recording": "node scripts/recording.mjs",
     "report": "python scripts/report.py",
     "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start"
   },

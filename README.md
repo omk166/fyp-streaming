@@ -6,7 +6,7 @@ Initial measured results: [concise results table](artifacts/SUMMARY.md), [Word r
 
 Controlled Linux experiments, when executed, are documented separately in [network results](artifacts/NETWORK_RESULTS.md), with [kernel shaping evidence](artifacts/network) and a [numeric CSV](artifacts/network-results.csv). Check exit codes represent basic media progress, not acceptable delay or perceptual quality.
 
-This is a research prototype. A separate entry page supports email/password accounts, optional Google sign-in, and explicit guest sessions. Meeting names come from the server-side session. Rooms require an invitation or ownership; owners can lock admission, replace invitations and end rooms. Recording, translation and TURN remain separate work. Chat, mic/camera controls, local video pinning, screen sharing, reactions and raised hands are included. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
+This is a research prototype. A separate entry page supports email/password accounts, optional Google sign-in, and explicit guest sessions. Meeting names come from the server-side session. Rooms require an invitation or ownership; owners can lock admission, replace invitations and end rooms. Translation and TURN remain separate work. Chat, mic/camera controls, local video pinning, screen sharing, reactions and raised hands are included. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
 
 ## Run locally
 
@@ -64,6 +64,16 @@ Use **Copy invitation** to share a link. Its random bearer token is in the URL f
 **Lock room** prevents new non-owner joins while existing calls continue. **End room** closes all participants and permanently disables that room. Rooms and invitations expire seven days after creation. The server checks these rules during admission, independently of UI controls. Ownership and invitation hashes persist in the same private database as accounts; active media/drawings remain in memory.
 
 `npm run test:rooms` checks API permissions, admission, rotation, lock, ending and expiry. With the local SFU running, `BROWSER_CHANNEL=chrome npm run test:room-ui` checks the owner UI, real guest media, rejected forged ownership/missing invitations, locks, replacement links, owner reload and room-end disconnection. Test tools create disposable owner accounts and invitation-protected rooms on the target server.
+
+## Recording with consent
+
+The room owner can choose **Request recording & agree**. This explicitly grants the owner's consent and asks every other connected participant to Allow or Decline. No recorder starts until all current participants approve. A decline or a two-minute consent timeout cancels the request. Everyone sees a recording indicator. Participants can withdraw consent to stop the clip; owners can stop or cancel it.
+
+The owner’s browser records a 1280×720, 15 fps grid of cameras and shared screens, including visible screen annotations/frozen frames, plus a separate mix of microphone and screen audio tracks. The saved grid is independent of local pinning. The call continues through its existing SFU tracks; recording never replaces or stops an original track. Output downloads to the owner's computer (WebM where supported, otherwise a supported MP4 format), with a fallback download link on the page. No recording file is uploaded to or stored on the server. Keep the host page open until the download finishes; download fallback links before closing it.
+
+A new arrival stops the current recording before their media is admitted. The recorder also filters its video/audio sources to the explicitly approved peer IDs, so a newly arrived participant cannot enter that clip. Start a new consent request to include them. Host departure, session loss or room ending stops the recorder; an encoding/capture failure resets the recording indicator and leaves the call connected. A clip has a 30-minute server limit and a 200 MB local buffer limit. Longer meetings require another consented clip. Keep the host tab active: background throttling, host CPU load, browser support and tab closure affect browser recording. This is local browser recording, not a persistent server-side recorder.
+
+`npm run test:recording-policy` checks consent quorum, stale requests, role restrictions, withdrawal, joining/leaving, failure and timers. With the local SFU running, `BROWSER_CHANNEL=chrome npm run test:recording` exercises consent UI, forged control rejection, playable video/audio output, screen sharing, withdrawal, new arrivals, host departure and recorder fault injection. Its media files stay under ignored `artifacts/private/`. These are functional synthetic tests, not a real-device quality or latency claim.
 
 ## Screen audio
 

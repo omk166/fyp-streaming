@@ -12,8 +12,8 @@ The current artifacts are exploratory measurements of a small streaming prototyp
 | Subjective quality | Consenting listeners, randomized/blind fixed samples and a defined rating scale | Individual ratings, listener count, MOS and uncertainty; no inferred MOS from statistics |
 | RTX/FEC efficacy | Supported controls and repeated matched loss/delay trials | Overhead and repaired packets that arrive before playback deadlines; NACK counts alone are insufficient |
 | Application adaptation | Implemented fast-down/slow-up policy and unchanged GCC baseline | Same hardware/media/profile, repeated trials, layer/target logs, downgrade/recovery and oscillation definition |
-| Recorder/AI isolation | Actual optional branches and their failure controls | Original-media continuity when each branch is enabled, disabled or crashed |
-| Remaining meeting features | Screen share, roles/host permissions, reactions, raised hands, whiteboard and other required UI | Functional and server-permission checks for implemented behavior, with screenshots |
+| Recorder/AI isolation | Browser recording now has consent and failure checks; AI branch remains to implement | Repeat continuity, endpoint CPU/RAM and latency measurements on real devices with recording enabled, disabled and failed; separately test the future AI branch |
+| Meeting features on real devices | Account/guest entry, invitation admission/owner controls, screen share/audio, reactions, hands, screen annotation, active speaker and local recording have automated functional checks | Cross-browser/device permission, picker, sound and recording checks; extended moderation (mute/remove others) and a standalone collaborative whiteboard remain separate work |
 
 For audio timing, capture the reference and receiver output on a shared clock where possible. Independent recording clocks need calibrated offset and drift. A practical bench setup can use distinctive chirps and a shared recording system, but acoustic distances, cross-talk and device processing must be calibrated and reported. A constant tone by itself does not provide an unambiguous absolute-delay reference.
 
