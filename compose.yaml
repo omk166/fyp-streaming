@@ -7,3 +7,10 @@ services:
       - "127.0.0.1:40000:40000/tcp"
     environment:
       ANNOUNCED_ADDRESS: "127.0.0.1"
+      APP_ORIGIN: "${APP_ORIGIN:-}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+    volumes:
+      - auth-data:/app/data
+volumes:
+  auth-data:

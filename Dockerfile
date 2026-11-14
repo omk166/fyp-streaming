@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY server.js ./
+COPY auth.js ./
 COPY client ./client
 COPY public ./public
 RUN npm run build

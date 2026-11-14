@@ -1,0 +1,91 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { WebSocket } from 'ws';
+
+const base = process.env.BASE_URL || 'http://127.0.0.1:3100';
+const origin = new URL(base).origin;
+const room = `entry-${Date.now()}`;
+const target = `/?synthetic=1&room=${room}`;
+const email = `${room}@example.test`, password = 'four memorable testing words';
+const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || undefined,
+  args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu', '--disable-accelerated-video-encode', '--disable-accelerated-video-decode'] });
+const errors = [];
+async function rejectedUpgrade(cookie, requestOrigin) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(origin.replace(/^http/, 'ws'), { headers: { Origin: requestOrigin, ...(cookie ? { Cookie: cookie } : {}) } });
+    ws.once('unexpected-response', (_request, response) => { const status = response.statusCode; response.resume(); ws.terminate(); resolve(status); });
+    ws.once('open', () => { ws.close(); reject(Error('Unauthorised WebSocket was accepted')); });
+    ws.on('error', () => {});
+  });
+}
+try {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+  await page.goto(base + target);
+  await page.waitForURL('**/auth?**');
+  assert.equal(new URL(page.url()).searchParams.get('next'), target);
+  await page.locator('#signupTab').click();
+  await page.locator('#signupName').fill('Account Alice');
+  await page.locator('#signupEmail').fill(email);
+  await page.locator('#signupPassword').fill(password);
+  await page.locator('#signupForm [type=submit]').click();
+  await page.waitForURL(base + target);
+  await page.locator('#join').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => !document.querySelector('#join').disabled);
+  assert.equal(await page.locator('#username').inputValue(), 'Account Alice');
+  assert.equal(await page.locator('#username').getAttribute('readonly'), '');
+  await page.locator('#join').click();
+  await page.waitForFunction(() => window.lab?.joined);
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage(); guest.on('pageerror', error => errors.push(error.message));
+  await guest.goto(base + target);
+  await guest.locator('#guestTab').click();
+  await guest.locator('#guestName').fill('Guest Bob');
+  await guest.locator('#guestForm [type=submit]').click();
+  await guest.waitForURL(base + target);
+  await guest.locator('#join').click();
+  for (const endpoint of [page, guest]) await endpoint.waitForFunction(() => window.lab?.joined && window.lab.consumers.size === 2);
+  await page.waitForFunction(() => document.querySelector('#participants').textContent.includes('Guest Bob (Guest)'));
+  await guest.waitForFunction(() => document.querySelector('#participants').textContent.includes('Account Alice'));
+  await page.locator('#message').fill('Signed-in and guest participants can talk'); await page.locator('#send').click();
+  await guest.waitForFunction(() => document.querySelector('#chat').textContent.includes('Account Alice: Signed-in'));
+  const cookies = await context.cookies(base), cookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+  assert.equal(await rejectedUpgrade(null, origin), 401);
+  assert.equal(await rejectedUpgrade(cookie, 'https://attacker.example'), 403);
+  const spoof = new WebSocket(origin.replace(/^http/, 'ws'), { headers: { Origin: origin, Cookie: cookie } });
+  await new Promise((resolve, reject) => { spoof.once('open', resolve); spoof.once('error', reject); });
+  const reply = new Promise(resolve => spoof.once('message', data => resolve(JSON.parse(data.toString()))));
+  spoof.send(JSON.stringify({ id: 1, method: 'join', data: { room: `${room}-spoof`, username: 'Forged Host', role: 'host' } }));
+  assert.equal((await reply).result.username, 'Account Alice');
+  await new Promise(resolve => { spoof.once('close', resolve); spoof.close(); });
+  await page.locator('#logout').click();
+  await page.waitForURL('**/auth?**');
+  await guest.waitForFunction(() => window.lab.consumers.size === 0);
+  assert.equal((await context.request.get(base + '/api/auth/session')).status(), 401);
+  await page.locator('#loginEmail').fill(email);
+  await page.locator('#loginPassword').fill('wrong password');
+  await page.locator('#loginForm [type=submit]').click();
+  await page.waitForFunction(() => document.querySelector('#feedback').textContent.includes('incorrect'));
+  await page.locator('#loginPassword').fill(password);
+  await page.locator('#loginForm [type=submit]').click();
+  await page.waitForURL(base + target);
+  await page.waitForFunction(() => !document.querySelector('#join').disabled);
+  assert.equal(await page.locator('#username').inputValue(), 'Account Alice');
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#join').disabled);
+  assert.equal(await page.locator('#username').inputValue(), 'Account Alice');
+  // Logout from a second tab must also end a connected meeting in the first.
+  await page.locator('#join').click(); await page.waitForFunction(() => window.lab.joined);
+  assert.equal((await context.request.post(base + '/api/auth/logout', { headers: { Origin: origin }, data: {} })).status(), 204);
+  await page.waitForURL('**/auth?**');
+  await mkdir('artifacts/private', { recursive: true });
+  await page.screenshot({ path: 'artifacts/private/auth-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#signupTab').click();
+  await page.screenshot({ path: 'artifacts/private/auth-mobile.png', fullPage: true });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  assert.deepEqual(errors, []);
+  await guest.locator('#leave').click();
+  console.log('PASS: separate entry page, signup, email login errors/recovery, guest, preserved room link, session persistence, account/guest media and chat, server identity enforcement, rejected anonymous/cross-origin sockets, logout and cross-tab logout cleanup, mobile layout. Google protocol is tested separately with a mocked provider.');
+} finally { await browser.close(); }

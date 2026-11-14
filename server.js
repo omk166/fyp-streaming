@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
+import { createAuth } from './auth.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
@@ -39,11 +40,28 @@ async function getRoom(id) {
   try { return await creating.get(id); } finally { creating.delete(id); }
 }
 const app = express();
-app.use(express.static('public'));
+let wss;
+const auth = createAuth({ secureCookies: Boolean(tls), onRevoke(hash) {
+  for (const ws of wss?.clients || []) if (ws.sessionHash === hash) ws.close(1008, 'Session ended');
+} });
+app.disable('x-powered-by');
+app.use((_req, res, next) => { res.set('Referrer-Policy', 'no-referrer'); res.set('X-Content-Type-Options', 'nosniff'); next(); });
+app.use(auth.router);
+app.get(['/auth', '/auth.html'], (_req, res) => res.set({ 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" }).sendFile(fileURLToPath(new URL('./public/auth.html', import.meta.url))));
+app.get(['/', '/index.html'], auth.requireSession, (_req, res) => res.sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
+app.use(express.static('public', { index: false }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = tls ? createHttpsServer(tls, app) : createServer(app);
 // 1 MiB so a paused screen's still image (a JPEG data URL, capped below) fits in one message.
-const wss = new WebSocketServer({ server, maxPayload: 1024 * 1024 });
+wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
+server.on('upgrade', (req, socket, head) => {
+  const session = auth.getSession(req);
+  if (!auth.sameOrigin(req) || !session) {
+    socket.end(`HTTP/1.1 ${session ? '403 Forbidden' : '401 Unauthorized'}\r\nConnection: close\r\n\r\n`); return;
+  }
+  req.session = session;
+  wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+});
 function emit(peer, event, data) {
   if (peer.ws.readyState === WebSocket.OPEN) peer.ws.send(JSON.stringify({ event, data }));
 }
@@ -56,7 +74,7 @@ function owned(map, id) {
   return item;
 }
 function participant(peer) {
-  return { peerId: peer.id, username: peer.username, micMuted: peer.micMuted, handRaised: peer.handRaised };
+  return { peerId: peer.id, username: peer.username, kind: peer.identity.kind, micMuted: peer.micMuted, handRaised: peer.handRaised };
 }
 function sharing(room, target) {
   return typeof target === 'string' && [...room.peers].some(p => p.id === target && [...p.producers.values()].some(pr => pr.appData.source === 'screen'));
@@ -76,9 +94,8 @@ const STILL = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+/]+=*$/;
 async function action(peer, method, data) {
   if (method === 'join') {
     if (peer.room || !/^[a-zA-Z0-9_-]{1,48}$/.test(data.room)) throw Error('Invalid room');
-    const username = typeof data.username === 'string' ? data.username.trim() : 'Guest';
-    if (!username || username.length > 40) throw Error('Enter a username (1?40 characters)');
-    peer.username = username;
+    // Identity comes from the authenticated/guest session, never a client-supplied label.
+    peer.username = peer.identity.name;
     peer.room = await getRoom(data.room);
     peer.roomId = data.room;
     peer.room.peers.add(peer);
@@ -201,13 +218,18 @@ async function action(peer, method, data) {
     default: throw Error('Unknown method');
   }
 }
-wss.on('connection', ws => {
-  const peer = { id: randomUUID(), micMuted: false, handRaised: false, lastReaction: 0, wbWindow: 0, wbCount: 0, ws, room: null, transports: new Map(), producers: new Map(), consumers: new Map() };
+wss.on('connection', (ws, req) => {
+  ws.sessionHash = req.session.hash;
+  const expiry = setTimeout(() => ws.close(1008, 'Session expired'), Math.max(1, req.session.expiresAt - Date.now()));
+  expiry.unref();
+  const peer = { id: randomUUID(), identity: req.session.identity, micMuted: false, handRaised: false, lastReaction: 0, wbWindow: 0, wbCount: 0, ws, room: null, transports: new Map(), producers: new Map(), consumers: new Map() };
   let queue = Promise.resolve();
   ws.on('message', raw => {
     queue = queue.then(async () => {
       let request;
       try {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (!auth.getSession(req)) { ws.close(1008, 'Session ended'); return; }
         request = JSON.parse(raw.toString());
         const result = await action(peer, request.method, request.data || {});
         if (request.id !== undefined && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: request.id, result }));
@@ -217,6 +239,7 @@ wss.on('connection', ws => {
     });
   });
   ws.on('close', () => {
+    clearTimeout(expiry);
     queue.finally(() => {
       for (const t of peer.transports.values()) t.close();
       const room = peer.room;

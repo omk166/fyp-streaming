@@ -6,4 +6,7 @@ artifacts/private/
 *.log
 __pycache__/
 certs/
+data/
+.env.*
+!.env.example
 public/demo-ca.cer

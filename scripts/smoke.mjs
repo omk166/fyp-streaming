@@ -19,10 +19,12 @@ let passed = false;
 try {
   for (let i = 0; i < count; i++) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); contexts.push(context);
+    const base = process.env.BASE_URL || 'http://127.0.0.1:3000';
+    const entry = await context.request.post(`${base}/api/auth/guest`, { headers: { Origin: new URL(base).origin }, data: { name: `Participant ${i + 1}` } });
+    if (!entry.ok()) throw Error(`Guest entry failed: ${entry.status()}`);
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', error => errors.push({ peer: i, message: error.message }));
-    await page.goto(`${process.env.BASE_URL || 'http://127.0.0.1:3000'}/?synthetic=1&mode=${mode}&room=${runId.slice(0,48)}&run=${runId}-peer${i}`);
-    await page.locator('#username').fill(`Participant ${i + 1}`);
+    await page.goto(`${base}/?synthetic=1&mode=${mode}&room=${runId.slice(0,48)}&run=${runId}-peer${i}`);
     await page.getByRole('button', { name: 'Join room', exact: true }).click();
     await page.waitForFunction(() => window.lab?.joined, null, { timeout: 30000 });
   }

@@ -49,6 +49,7 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=$APP_DIR
+EnvironmentFile=-$APP_DIR/.env
 Environment=HOST=0.0.0.0 PORT=443 MEDIA_IP=0.0.0.0 ANNOUNCED_ADDRESS=$PUBLIC_IP
 Environment=TLS_CERT=/etc/letsencrypt/live/$DOMAIN/fullchain.pem TLS_KEY=/etc/letsencrypt/live/$DOMAIN/privkey.pem
 ExecStart=$(command -v node) server.js

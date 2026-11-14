@@ -1,13 +1,15 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 
-const browser = await chromium.launch({ headless: true, channel: 'msedge', args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu', '--disable-accelerated-video-encode', '--disable-accelerated-video-decode'] });
+const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || 'msedge', args: ['--autoplay-policy=no-user-gesture-required', '--disable-gpu', '--disable-accelerated-video-encode', '--disable-accelerated-video-decode'] });
 const pages = [], errors = [];
 const base = process.env.BASE_URL || 'http://127.0.0.1:3100';
 const room = `features-${Date.now()}`;
 try {
   for (const name of ['Alice', 'Bob', '<b>Charlie</b>']) {
     const context = await browser.newContext();
+    const entry = await context.request.post(`${base}/api/auth/guest`, { headers: { Origin: new URL(base).origin }, data: { name } });
+    assert.equal(entry.status(), 201);
     // A generated display track exercises publishing and remote reception.
     // Native OS display selection still needs a manual browser check.
     await context.addInitScript(() => {
@@ -26,11 +28,8 @@ try {
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(`${base}/?synthetic=1&room=${room}`);
-    if (name === 'Alice') {
-      await page.locator('#join').click();
-      assert.equal(await page.evaluate(() => window.lab.joined), false);
-    }
-    await page.locator('#username').fill(name);
+    await page.waitForFunction(() => !document.querySelector('#join').disabled);
+    assert.equal(await page.locator('#username').inputValue(), name);
     await page.locator('#join').click();
     await page.waitForFunction(() => window.lab.joined);
   }
@@ -62,7 +61,7 @@ try {
     for (const page of pages) await page.waitForFunction(() => document.querySelector('#reactions').children.length === 0);
   }
   await bob.locator('#mic').click(); await bob.locator('#hand').click();
-  for (const page of pages) await page.waitForFunction(() => [...document.querySelectorAll('#participants li')].some(t => t.textContent === 'Bob' || t.textContent === 'Bob (You)'));
+  for (const page of pages) await page.waitForFunction(() => [...document.querySelectorAll('#participants li')].some(t => /^Bob \(Guest\)( \(You\))?$/.test(t.textContent)));
   await alice.evaluate(() => { window.cancelShare = true; });
   await alice.locator('#screen').click();
   await alice.waitForFunction(() => !document.querySelector('#screen').disabled);
@@ -76,6 +75,7 @@ try {
   await remoteBob.getByRole('button', { name: 'Pin', exact: true }).click();
   await bob.locator('#camera').click();
   await alice.waitForFunction(() => document.querySelector('#stage .tile')?.dataset.paused === 'true');
+  await bob.waitForFunction(() => document.querySelector('#track-local')?.closest('.tile')?.dataset.paused === 'true');
   assert.equal(await remoteBob.locator('video').evaluate(v => getComputedStyle(v).visibility), 'hidden');
   assert.equal(await remoteBob.evaluate(t => getComputedStyle(t).backgroundColor), 'rgb(0, 0, 0)');
   assert.equal(await bob.locator('#track-local').evaluate(v => getComputedStyle(v).visibility), 'hidden');

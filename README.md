@@ -6,13 +6,13 @@ Initial measured results: [concise results table](artifacts/SUMMARY.md), [Word r
 
 Controlled Linux experiments, when executed, are documented separately in [network results](artifacts/NETWORK_RESULTS.md), with [kernel shaping evidence](artifacts/network) and a [numeric CSV](artifacts/network-results.csv). Check exit codes represent basic media progress, not acceptable delay or perceptual quality.
 
-This is a local experiment environment. It has no authentication, host roles, recording, translation or TURN service yet. Do not expose this prototype as a public meeting service. Usernames, chat, mic/camera controls, local video pinning and screen sharing are included for basic functional tests. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
+This is a research prototype. A separate entry page supports email/password accounts, optional Google sign-in, and explicit guest sessions. Meeting names come from the server-side session. Host roles, protected room admission, recording, translation and TURN remain separate work; an account does not yet restrict which room someone may enter. Chat, mic/camera controls, local video pinning, screen sharing, reactions and raised hands are included. Screen annotation (draw and pause over a shared screen) is included; see [Screen drawing](#screen-drawing). Reconnection requires leaving and joining again.
 
 ## Run locally
 
 For different devices on the same Wi-Fi, see [the HTTPS LAN demo setup](LAN-DEMO.md). It includes certificate trust, scoped firewall rules and a launcher. A Windows laptop and MacBook call was confirmed working by the project owner on October 31, 2026; this is a functional check, not a measured multi-device performance trial.
 
-Requires Node.js 22+; installation may download a native mediasoup worker. A compiler/Python toolchain is needed if no prebuilt worker is available. See the [official installation requirements](https://mediasoup.org/documentation/v3/mediasoup/installation/).
+Requires Node.js 22.13+ (built-in SQLite without an experimental CLI flag); installation may download a native mediasoup worker. A compiler/Python toolchain is needed if no prebuilt worker is available. See the [official installation requirements](https://mediasoup.org/documentation/v3/mediasoup/installation/).
 
 ```powershell
 npm ci
@@ -20,9 +20,40 @@ npm run build
 npm start
 ```
 
-Open http://127.0.0.1:3000 in two browser tabs. Enter your name and use the same room name. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
+Open http://127.0.0.1:3000. Log in, create an account, or choose Guest and enter a name, then use the same room name on each endpoint. Use separate browser profiles or private windows for different identities; tabs in one profile share a session. Links such as `/?room=team` preserve their parameters through the entry page. For initial automated experiments, select synthetic media, which publishes an animated canvas and quiet tone. Camera/microphone access requires browser permission. The app saves statistics in memory; Export raw telemetry downloads JSON. Export before leaving or closing. Test runs should use fresh tabs so each export covers one session.
 
 Alternatively, start Docker Desktop and run `docker compose up --build`. The supplied Docker configuration binds to localhost only. Access from additional laptops needs a separately configured reachable media address and HTTPS for browser capture; it is not enabled by this local configuration.
+
+## Accounts, Google and guest entry
+
+`/auth` is a separate, replaceable page; the existing meeting page remains the research interface. Email signup asks for a name, email and 12–128 character password. Google sign-in creates an account on first use. Guests choose a name without creating an account. Guests are marked in the participant list. All three paths use an HttpOnly, SameSite=Lax cookie and server-side SQLite session; no session token is stored in browser JavaScript storage. Accounts last seven days per login, guests twelve hours. Sign-out revokes that session and closes its open meeting connections, including other tabs. WebSocket upgrades require a valid session and the same origin; client-supplied names cannot override the session identity.
+
+Passwords use salted scrypt (N=32768, r=8, p=3), and only session-token hashes are stored. Auth requests require same-origin JSON, have payload limits and rate limiting, and password derivation concurrency is bounded. HTTPS uses Secure host-only cookies. Behind a TLS proxy set `APP_ORIGIN` to the exact public origin; forwarded headers alone are not trusted. The rate limiter uses the direct socket IP (a shared proxy is one bucket). These are single-instance controls; multi-instance hosting needs shared rate limiting and a suitable shared database.
+
+Data lives in `data/auth.sqlite` by default (or `AUTH_DB_PATH`). Keep that directory private and persistent. Docker Compose mounts a named `auth-data` volume; do not remove it unless intentionally deleting accounts. Back up a stopped database, or use a consistent SQLite backup including its WAL rather than copying an actively written main file alone. Database files and `.env` are ignored by Git and excluded from the Docker build context.
+
+Email ownership verification, password reset, account linking, and room access permissions are not included in this first feature. Email signup does not prove ownership of an email address. Google accounts are keyed by Google's verified subject ID. An email/password account is never silently linked to Google by matching an email: use the original method if that address is already registered. Google access/refresh tokens are not retained. Future protected-room ownership must use the internal user ID, not a display name or unverified email.
+
+### Enable Google on the Dubai server
+
+1. In Google Cloud, create/configure the OAuth consent screen (app name/support contact and audience). While the app is in Testing, add the team as test users as required by Google.
+2. Create an OAuth client of type **Web application**. Register the exact redirect URI `https://84-12-183-78.sslip.io/api/auth/google/callback`. For this server-side redirect flow, the callback URI is required; no browser JavaScript client secret or Google API access is needed. If Google will not accept the shared sslip.io domain for your consent configuration, use a domain you control and update both the callback and `APP_ORIGIN`.
+3. Copy `.env.example` to `.env` on the server only. Set `APP_ORIGIN`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; restrict the file with `chmod 600 .env`. Do not paste credentials into Git or browser code. `npm start` loads `.env`; services generated by the updated setup script load it via `EnvironmentFile`.
+4. For an **existing** systemd service, add `EnvironmentFile=/absolute/path/to/fyp-streaming/.env` under `[Service]` using `sudo systemctl edit fyp-streaming`, then run `sudo systemctl daemon-reload` and `sudo systemctl restart fyp-streaming`. Keep the existing TLS/media variables.
+5. For a local Google test, use an allowed localhost callback such as `http://localhost:3000/api/auth/google/callback`, set `APP_ORIGIN=http://localhost:3000`, and open that exact origin. Do not use the deployed APP_ORIGIN during a local HTTP run.
+
+Without Google credentials the page shows Google as unavailable, while email/password and guest entry work. The OAuth flow uses authorization code + PKCE, a browser-bound one-use state, a nonce, and Google's official ID-token verifier (signature, issuer, audience and expiry). See [Google's OpenID Connect setup](https://developers.google.com/identity/openid-connect/openid-connect).
+
+### Validate the entry feature
+
+```sh
+npm run test:auth
+# With the server running on port 3100:
+BASE_URL=http://127.0.0.1:3100 BROWSER_CHANNEL=chrome npm run test:entry
+BASE_URL=http://127.0.0.1:3100 BROWSER_CHANNEL=chrome node scripts/meeting-features.mjs
+```
+
+`test:auth` uses temporary databases and a mocked Google provider to check credential validation, persistence, expiry, rotation/revocation, CSRF/origin checks, secure cookies, limits, redirects, state/nonce/PKCE and account collisions. `test:entry` uses a real local SFU and browser to check the page, account/guest media and chat, preserved room links, rejected anonymous/cross-origin signaling, identity spoofing, logout across tabs and mobile layout. It creates synthetic test accounts on the target server: use a local/disposable test database. Live Google consent/sign-in is still a manual test requiring your configured OAuth client. The existing smoke and meeting checks now establish guest sessions before joining.
 
 ## Screen drawing
 
@@ -69,7 +100,7 @@ See `evaluation/test-matrix.csv` for the scenarios derived from the supplied res
 
 ## Meeting controls
 
-Enter a display name (up to 40 characters) before joining. Names appear on camera and shared-screen tiles and in chat; these are display labels, not authenticated identities.
+Choose your name at signup or guest entry. The meeting uses that session's name (up to 40 characters) on camera/shared-screen tiles and in chat; it cannot be changed by editing the meeting-page input. Guest sessions are explicitly labelled in the participant list. Display names are not unique and do not confer host permissions.
 
 Click **Pin** on a video to enlarge it in the centered stage above the other videos. Click **Unpin** to return to the grid. Pinning affects only your own view, and a departing or stopped pinned track returns your view to the grid.
 

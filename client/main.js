@@ -11,6 +11,28 @@ const tiles = new Map(), participants = new Map(), reactionTimers = new Set();
 const reactionIcons = { 'thumbs-up': '\u{1F44D}', heart: '\u{2764}\u{FE0F}', laugh: '\u{1F602}' };
 let serial = 0;
 const pending = new Map(), seen = new Set();
+const entryUrl = () => `/auth?next=${encodeURIComponent(location.pathname + location.search)}`;
+let identity = null;
+async function loadIdentity() {
+  try {
+    const response = await fetch('/api/auth/session', { cache: 'no-store' });
+    if (response.status === 401) { location.replace(entryUrl()); return; }
+    if (!response.ok) throw Error('Could not check your session. Please refresh to try again.');
+    identity = await response.json();
+    $('username').value = identity.name;
+    $('identity').textContent = `${identity.kind === 'guest' ? 'Guest' : 'Signed in'} · ${identity.name}`;
+    $('logout').textContent = identity.kind === 'guest' ? 'Exit guest session' : 'Sign out';
+    $('logout').disabled = false; $('join').disabled = false;
+  } catch (error) { fail(error); }
+}
+$('logout').onclick = async () => {
+  $('logout').disabled = true;
+  try {
+    const response = await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (!response.ok) throw Error('Could not sign out. Please try again.');
+    leave(); location.assign(entryUrl());
+  } catch (error) { fail(error); $('logout').disabled = false; }
+};
 function event(type, data = {}) { state.events.push({ timestamp: new Date().toISOString(), type, ...data }); }
 function fail(error) { state.errors.push(String(error)); $('status').textContent = String(error); event('error', { message: String(error) }); }
 function rpc(method, data = {}) {
@@ -29,7 +51,7 @@ function refreshParticipantUI() {
   $('participants').replaceChildren();
   for (const peer of participants.values()) {
     const item = document.createElement('li'); item.dataset.peerId = peer.peerId;
-    item.textContent = `${peer.username}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}`;
+    item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}`;
     $('participants').append(item);
   }
   const raised = participants.get(state.peerId)?.handRaised || false;
@@ -190,6 +212,7 @@ async function sample() {
   finally { state.sampling = false; }
 }
 async function join() {
+  if (!identity) return;
   if (!$('username').value.trim()) { $('username').focus(); $('status').textContent = 'Enter your name to join.'; return; }
   session++;
   $('join').disabled = true;
@@ -226,7 +249,10 @@ async function join() {
       } else if (message.event === 'chat') { $('chat').textContent += `${message.data.username || 'Guest'}: ${message.data.text}\n`; event('chat'); }
     };
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
-    ws.onclose = () => { if (state.joined) { fail(Error('Disconnected; rejoin required')); leave(); } };
+    ws.onclose = ({ code }) => {
+      if (code === 1008) { leave(); location.replace(entryUrl()); return; }
+      if (state.joined) { fail(Error('Disconnected; rejoin required')); leave(); }
+    };
     const info = await rpc('join', { room: $('room').value, username: $('username').value.trim() });
     state.peerId = info.peerId; state.username = info.username;
     for (const peer of info.participants) participants.set(peer.peerId, peer);
@@ -264,7 +290,11 @@ function leave() {
   $('screen').textContent = 'Share screen';
   clearInterval(timer); clearInterval(animation);
   for (const p of pending.values()) p.reject(Error('Left room')); pending.clear();
-  send?.close(); recv?.close(); stream?.getTracks().forEach(t => t.stop()); audioContext?.close(); ws?.close();
+  send?.close(); recv?.close(); stream?.getTracks().forEach(t => t.stop());
+  // Logout and session revocation can both tear down the same call.
+  const closingAudio = audioContext; audioContext = null;
+  if (closingAudio && closingAudio.state !== 'closed') closingAudio.close().catch(() => {});
+  ws?.close();
   state.consumers.clear(); state.producers = []; seen.clear(); $('media').replaceChildren(); $('stage').replaceChildren(); tiles.clear(); pinned = null; updatePin();
   for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = true;
   $('wbBar').hidden = true; pipWin?.close(); penStop(); clearTimeout(wbTimer); setDrawing(false); overlays.clear(); annotations.clear(); frozen.clear();
@@ -552,3 +582,4 @@ $('export').onclick = () => {
 if (params.has('synthetic')) $('synthetic').checked = true;
 if (params.has('mode')) $('mode').value = params.get('mode');
 if (params.has('room')) $('room').value = params.get('room');
+loadIdentity();

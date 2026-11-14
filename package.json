@@ -4,17 +4,20 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "build": "esbuild client/main.js --bundle --format=esm --outfile=public/bundle.js",
-    "start": "node server.js",
+    "start": "node --env-file-if-exists=.env server.js",
     "test:smoke": "node scripts/smoke.mjs",
+    "test:auth": "node --test tests/auth.test.mjs",
+    "test:entry": "node scripts/auth-entry.mjs",
     "report": "python scripts/report.py",
     "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start"
   },
   "dependencies": {
     "express": "^5.1.0",
+    "google-auth-library": "11.3.4",
     "mediasoup": "^3.19.0",
     "mediasoup-client": "^3.18.0",
     "ws": "^8.18.0"
