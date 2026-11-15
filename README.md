@@ -105,6 +105,51 @@ Screen sound is a separate Opus producer associated with its screen video; micro
 
 Microphone RTP audio levels drive a green camera-tile outline and a Speaking label in the participant list. No speech recognition or AI is used. Muting, silence and departure clear the indicator; pinning stays local and is not changed by speaker events. Only microphone producers are observed, so screen sound does not count as a person speaking. `BROWSER_CHANNEL=chrome npm run test:speaker` exercises switching, silence, camera-off speaking and cleanup using synthetic microphone audio over the real SFU.
 
+## Shared whiteboard
+
+After joining a meeting, choose **Whiteboard** to open a shared blank canvas.
+The microphone, camera and call remain connected. **Show to everyone** opens
+this board for all current participants and subsequent arrivals. Participants
+can close their own panel without clearing the board or leaving the call.
+
+Everyone can use pencil, marker, translucent highlighter, line, arrow, rectangle
+and ellipse tools, a custom color and four thicknesses. Pencil and marker use
+solid ink. Finished strokes stay visible locally while awaiting server
+confirmation; rejected submissions display an error. Hold Shift while drawing
+a rectangle or ellipse for a square or circle. Mouse, pen and touch are supported.
+Drawings and erasures are shared when the pointer is released. Escape cancels
+an unfinished gesture.
+
+**Eraser** removes only the portions you drag over, including portions of shapes
+and other participants' drawings. The size selector controls its width. Erasures
+are stored in the shared history, so **Undo my last drawing / erasure** restores
+your latest erasure or removes your latest drawing from this connection. New ink
+can be drawn over previously erased areas. Only the owner can **Clear board**,
+after confirmation. Late arrivals get the current drawing and erasure history.
+**Download PNG** saves the visible board with a white background.
+
+The board is held in memory until the last participant leaves or the server
+restarts. It is separate from screen annotations and is not included in the
+camera/screen recording grid. Boards are limited to 600 drawing/erasing gestures
+and 50,000 points.
+
+Validation: `npm run build` and all 36 unit tests (`npm test`) passed. Run
+`npm run test:whiteboard-ui` for the isolated four-browser WebSocket integration
+check (installed Chrome by default; override `BROWSER_CHANNEL` if needed). It
+checks shared ink, partial erasing, undo, late arrivals, presentation, room
+isolation, hidden-panel updates, PNG download and owner-only clearing. The
+single-user preview also passed pen visibility with a simulated 600 ms delay.
+The isolated check runs the actual whiteboard client and policy, but does not
+start the meeting server or mediasoup. Full audio/video meeting verification
+remains pending because the native worker could not build on the local Mac.
+
+Before merging/deploying, use a machine with a working meeting-server setup:
+create a room, join from separate owner/guest browser profiles with audio/video,
+choose **Show to everyone**, draw and partially erase from both profiles, undo,
+and join a third participant to check the restored board. Verify camera, audio,
+chat and screen sharing continue, then test closing the board and leaving.
+Rebuild the frontend and restart the server together when deploying this change.
+
 ## Screen drawing
 
 Marks are drawn on a layer over the **video** of a shared screen and relayed through the server as coordinates (0..1 of the picture), so every viewer sees them in the same place whatever their window size.

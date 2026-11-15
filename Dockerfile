@@ -7,6 +7,8 @@ COPY server.js ./
 COPY auth.js ./
 COPY rooms.js ./
 COPY recording.js ./
+COPY transcription.js ./
+COPY whiteboard.js ./
 COPY client ./client
 COPY public ./public
 RUN npm run build
