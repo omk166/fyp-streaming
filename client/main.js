@@ -1,3 +1,4 @@
+import { setupWhiteboard } from './whiteboard.js';
 import { Device } from 'mediasoup-client';
 import { setupRooms } from './rooms.js';
 import { setupRecording } from './recording-controls.js';
@@ -25,6 +26,7 @@ const recordingControls = setupRecording({ $, state, rpc, tiles: () => [...tiles
     ...[...state.consumers.values()].filter(c => c.kind === 'audio').map(c => ({ track: c.track, peerId: c.appData.peerId })),
   ], notice: message => { $('status').textContent = message; } });
 const transcriptionControls = setupTranscription({ $, state, rpc, microphone: () => stream?.getAudioTracks()[0], notice: message => { $('status').textContent = message; } });
+const whiteboard = setupWhiteboard({ $, state, rpc });
 Object.defineProperty(state, 'recorderRunning', { get: () => recordingControls.running });
 async function loadIdentity() {
   try {
@@ -261,7 +263,8 @@ async function join() {
       if (message.id) {
         const p = pending.get(message.id); pending.delete(message.id);
         if (p) message.error ? p.reject(Error(message.error)) : p.resolve(message.result);
-      } else if (message.event === 'producer') consume(message.data.producerId);
+      } else if (message.event?.startsWith('whiteboard')) whiteboard.receive(message.event, message.data);
+      else if (message.event === 'producer') consume(message.data.producerId);
       else if (message.event === 'consumerPaused') {
         setVideoPaused(message.data.id, message.data.paused);
       } else if (message.event === 'consumerClosed') {
@@ -312,6 +315,7 @@ async function join() {
       if (state.joined) returnHome('disconnected');
     };
     const info = await rpc('join', roomControls.credentials());
+    whiteboard.load(info.whiteboard);
     state.peerId = info.peerId; state.username = info.username;
     state.activeSpeaker = info.activeSpeaker;
     for (const peer of info.participants) participants.set(peer.peerId, peer);
@@ -331,7 +335,7 @@ async function join() {
     state.producers.push(await send.produce({ track: stream.getVideoTracks()[0], codec, encodings, appData: { source: 'camera' } }));
     state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
-    state.joined = true; state.joinMs = performance.now() - started;
+    state.joined = true; whiteboard.refresh(); state.joinMs = performance.now() - started;
     recordingControls.update(receivedRecording || info.recording);
     transcriptionControls.update(receivedTranscription || info.transcription);
     roomControls.refresh();
@@ -356,7 +360,7 @@ async function returnHome(reason = 'left') {
   location.assign('/');
 }
 function leave() {
-  state.joined = false; session++;
+  state.joined = false; whiteboard.leave(); session++;
   const recordingFinished = recordingControls.leave();
   transcriptionControls.leave();
   state.activeSpeaker = null;

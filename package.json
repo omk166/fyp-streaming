@@ -24,7 +24,9 @@
     "test:transcription-ui": "node scripts/transcription.mjs",
     "test:transcription-real": "node scripts/transcription-real.mjs",
     "report": "python scripts/report.py",
-    "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start"
+    "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start",
+    "test:whiteboard": "node --test tests/whiteboard.test.mjs",
+    "test:whiteboard-ui": "node scripts/whiteboard-ui.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
