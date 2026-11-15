@@ -11,6 +11,7 @@ import { createAuth } from './auth.js';
 import { createRoomAccess } from './rooms.js';
 import { createRoomRecording } from './recording.js';
 import { createTranscription, createTranscriber } from './transcription.js';
+import { createWhiteboard } from './whiteboard.js';
 const transcribe = createTranscriber();
 
 const host = process.env.HOST || '127.0.0.1';
@@ -38,6 +39,7 @@ async function getRoom(id) {
   if (rooms.has(id)) return rooms.get(id);
   if (!creating.has(id)) creating.set(id, (async () => {
     const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), activeSpeaker: null, board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
+    room.whiteboard = createWhiteboard();
     room.recording = createRoomRecording({ peers: room.peers, publish: data => broadcast(room, null, 'recordingState', data) });
     room.transcription = createTranscription({ peers: room.peers, transcribe, publish: (event, data) => broadcast(room, null, event, data) });
     room.audioLevels = await room.router.createAudioLevelObserver({ maxEntries: 1, threshold: -65, interval: 300 });
@@ -139,11 +141,22 @@ async function action(peer, method, data) {
     room.recording.membershipChanged();
     room.transcription.membershipChanged();
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { transcription: room.transcription.snapshot(), room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
+    return { whiteboard: room.whiteboard.snapshot(), transcription: room.transcription.snapshot(), room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
   switch (method) {
+    case 'whiteboardAdd':
+    case 'whiteboardUndo':
+    case 'whiteboardShow':
+    case 'whiteboardClear': {
+      const now = Date.now();
+      if (!peer.boardWindow || now - peer.boardWindow > 1000) { peer.boardWindow = now; peer.boardCount = 0; }
+      if (++peer.boardCount > 20) throw Error('Please slow down whiteboard changes');
+      const operation = method === 'whiteboardAdd' ? 'add' : method === 'whiteboardUndo' ? 'undo' : method === 'whiteboardShow' ? 'show' : 'clear';
+      const result = room.whiteboard[operation](peer, data);
+      broadcast(room, null, method, result); return {};
+    }
     case 'transcriptionRequest': return room.transcription.request(peer);
     case 'transcriptionConsent': return room.transcription.consent(peer, data.id, data.allow);
     case 'transcriptionStop': return room.transcription.stop(peer, data.id);
