@@ -85,15 +85,45 @@ function showReaction(data) {
   const timer = setTimeout(() => { item.remove(); reactionTimers.delete(timer); }, 4000);
   reactionTimers.add(timer);
 }
+// ---- Zoom-style layout. One "spotlight" tile goes on the big stage, the rest go in a filmstrip.
+// Priority: your pin > a screen share (someone else's first) > the latest remote speaker > the first remote camera.
+// One-on-one: the other person fills the stage and your own camera floats small in the corner.
+// Gallery view (toggle) shows equal tiles unless someone is sharing or you pinned a tile.
+let viewMode = 'speaker', spotlightSpeaker = null, speakerTimer = null;
+function chooseSpotlight(visible) {
+  if (pinned && visible.has(pinned)) return pinned;
+  const screens = [...visible].filter(([, t]) => t.dataset.source === 'screen').map(([id]) => id);
+  const share = screens.filter(id => id !== 'screen-local').at(-1) || screens.at(-1);
+  if (share) return share;
+  if (viewMode === 'gallery') return null;
+  const remote = [...visible].filter(([, t]) => t.dataset.source === 'camera' && t.dataset.peerId !== state.peerId);
+  const speaker = remote.find(([, t]) => t.dataset.peerId === spotlightSpeaker);
+  return (speaker || remote[0])?.[0] || (visible.has('local') ? 'local' : null);
+}
 function updatePin() {
-  $('stage').hidden = !pinned;
-  for (const [id, tile] of tiles) {
-    if (pipWin && tile.ownerDocument === pipWin.document) continue; // popped out: stays in the floating window
-    (id === pinned ? $('stage') : $('media')).append(tile);
+  const visible = new Map([...tiles].filter(([, t]) => !(pipWin && t.ownerDocument === pipWin.document))); // popped-out tiles stay in the floating window
+  const spot = chooseSpotlight(visible), others = visible.size - (spot ? 1 : 0);
+  const layout = !spot ? 'gallery' : others === 0 ? 'solo'
+    : others === 1 && visible.get(spot).dataset.source === 'camera' && visible.has('local') && spot !== 'local' ? 'duo'
+    : visible.get(spot).dataset.source === 'screen' ? 'share' : 'speaker';
+  $('videoArea').dataset.layout = layout;
+  $('stage').hidden = !spot;
+  $('stage').setAttribute('aria-label', spot === pinned ? 'Pinned video' : 'Main video');
+  for (const [id, tile] of visible) {
+    const parent = id === spot ? $('stage') : $('media');
+    if (tile.parentElement !== parent) parent.append(tile); // only move when needed so videos keep playing
     tile.querySelector('button').textContent = id === pinned ? 'Unpin' : 'Pin';
     tile.querySelector('button').setAttribute('aria-pressed', String(id === pinned));
   }
+  $('viewMode').textContent = viewMode === 'gallery' ? 'Speaker view' : 'Gallery view';
 }
+// Wait a moment before moving the stage to a new speaker, so short sounds do not make the view jump around.
+function speakerChanged(peerId) {
+  clearTimeout(speakerTimer);
+  if (!peerId || peerId === state.peerId || peerId === spotlightSpeaker) return;
+  speakerTimer = setTimeout(() => { if (state.activeSpeaker === peerId) { spotlightSpeaker = peerId; updatePin(); } }, spotlightSpeaker ? 1200 : 0);
+}
+$('viewMode').onclick = () => { viewMode = viewMode === 'gallery' ? 'speaker' : 'gallery'; updatePin(); };
 function setVideoPaused(id, paused) {
   const tile = tiles.get(id);
   if (tile) {
@@ -115,7 +145,7 @@ function render(track, id, muted = false, info = {}) {
   el.srcObject = new MediaStream([track]);
   if (track.kind === 'video') {
     const tile = document.createElement('section'); tile.className = 'tile';
-    tile.dataset.source = info.source || 'camera'; tile.dataset.peerId = info.peerId || state.peerId;
+    tile.dataset.source = info.source || 'camera'; tile.dataset.peerId = info.peerId || state.peerId; tile.dataset.name = info.username || state.username || '';
     const footer = document.createElement('footer'), label = document.createElement('span'), button = document.createElement('button');
     label.textContent = `${info.username || state.username}${muted ? ' (You)' : ''}${info.source === 'screen' ? ' - Screen' : ''}`;
     button.type = 'button'; button.onclick = () => { pinned = pinned === id ? null : id; updatePin(); };
@@ -273,7 +303,7 @@ async function join() {
       } else if (message.event === 'roomSettings') {
         roomControls.changed(message.data);
       } else if (message.event === 'activeSpeaker') {
-        state.activeSpeaker = message.data.peerId; refreshParticipantUI();
+        state.activeSpeaker = message.data.peerId; refreshParticipantUI(); speakerChanged(state.activeSpeaker);
       } else if (message.event === 'transcriptionState') {
         receivedTranscription = message.data;
         if (state.joined) transcriptionControls.update(message.data);
@@ -313,7 +343,7 @@ async function join() {
     };
     const info = await rpc('join', roomControls.credentials());
     state.peerId = info.peerId; state.username = info.username;
-    state.activeSpeaker = info.activeSpeaker;
+    state.activeSpeaker = info.activeSpeaker; spotlightSpeaker = info.activeSpeaker === info.peerId ? null : info.activeSpeaker;
     for (const peer of info.participants) participants.set(peer.peerId, peer);
     annotationsLoad(info.board || []); frozen.clear(); for (const f of info.frozen || []) frozen.set(f.target, f.image || null);
     refreshParticipantUI();
@@ -359,7 +389,7 @@ function leave() {
   state.joined = false; session++;
   const recordingFinished = recordingControls.leave();
   transcriptionControls.leave();
-  state.activeSpeaker = null;
+  state.activeSpeaker = null; spotlightSpeaker = null; clearTimeout(speakerTimer);
   for (const timer of reactionTimers) clearTimeout(timer); reactionTimers.clear();
   $('reactions').replaceChildren(); participants.clear(); refreshParticipantUI();
   screenProducer?.close(); screenProducer = null;

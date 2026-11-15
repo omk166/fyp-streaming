@@ -42,9 +42,16 @@ try {
   const bobTile = alice.locator('.tile').filter({ hasText: 'Bob' });
   await bobTile.getByRole('button', { name: 'Pin', exact: true }).click();
   assert.match(await alice.locator('#stage').innerText(), /Bob/);
-  assert.equal(await bob.locator('#stage').isVisible(), false);
+  assert.equal(await bob.locator('[aria-pressed="true"]').filter({ hasText: 'Unpin' }).count(), 0); // pins are local only
   await alice.locator('#stage button').click();
+  assert.equal(await alice.locator('.tile button[aria-pressed="true"]').count(), 0);
+  // Three people, nobody pinned: speaker view puts one remote camera on the stage and the rest in the filmstrip.
+  assert.equal(await alice.locator('#videoArea').getAttribute('data-layout'), 'speaker');
+  assert.notEqual(await alice.locator('#stage .tile').getAttribute('data-peer-id'), await alice.evaluate(() => window.lab.peerId));
+  await alice.locator('#viewMode').click();
+  assert.equal(await alice.locator('#videoArea').getAttribute('data-layout'), 'gallery');
   assert.equal(await alice.locator('#stage').isVisible(), false);
+  await alice.locator('#viewMode').click();
   await alice.locator('#message').fill('Hello everyone'); await alice.locator('#send').click();
   await bob.waitForFunction(() => document.querySelector('#chat').textContent.includes('Alice: Hello everyone'));
   await bob.locator('#mic').click();
@@ -73,6 +80,8 @@ try {
   await alice.locator('#screen').click();
   await bob.waitForFunction(() => [...window.lab.consumers.values()].some(c => c.appData.source === 'screen'));
   await bob.waitForFunction(() => [...document.querySelectorAll('[data-source="screen"] video')].some(v => v.currentTime > 0 && v.videoWidth > 0));
+  // A share takes the stage automatically for viewers.
+  await bob.waitForFunction(() => document.querySelector('#videoArea').dataset.layout === 'share' && document.querySelector('#stage .tile').dataset.source === 'screen');
   await bob.locator('[data-source="screen"] button').click();
   const remoteBob = alice.locator('.tile[data-source="camera"]').filter({ hasText: 'Bob' });
   await remoteBob.getByRole('button', { name: 'Pin', exact: true }).click();
@@ -96,7 +105,7 @@ try {
   await charlie.locator('#screen').click();
   await bob.waitForFunction(() => document.querySelectorAll('[data-source="screen"]').length === 2);
   await alice.locator('#screen').click();
-  await bob.waitForFunction(() => document.querySelector('#stage').hidden && document.querySelectorAll('[data-source="screen"]').length === 1);
+  await bob.waitForFunction(() => document.querySelectorAll('[data-source="screen"]').length === 1 && document.querySelector('#stage .tile')?.dataset.source === 'screen' && !document.querySelector('.tile button[aria-pressed="true"]'));
   await alice.locator('#screen').click();
   await bob.waitForFunction(() => document.querySelectorAll('[data-source="screen"]').length === 2);
   await alice.evaluate(() => { const track = window.testDisplay.getVideoTracks()[0]; track.stop(); track.dispatchEvent(new Event('ended')); });
@@ -108,5 +117,5 @@ try {
   await bob.locator('#join').click(); await bob.waitForFunction(() => window.lab.joined && window.lab.consumers.size === 2);
   for (const page of pages) assert.deepEqual(await page.evaluate(() => window.lab?.errors || []), []);
   assert.deepEqual(errors, []);
-  console.log('PASS: three participants, usernames and safe text, local pin/unpin, named chat, local/remote mute and hand indicators, late join state, all three reactions delivered and expired, share cancellation, decoded screen video, simultaneous shares, black paused camera (local, remote, pinned and late join), resumed moving video, camera controls, stop/restart, browser stop, leave cleanup and rejoin.');
+  console.log('PASS: three participants, usernames and safe text, local pin/unpin, speaker/gallery/share layouts, named chat, local/remote mute and hand indicators, late join state, all three reactions delivered and expired, share cancellation, decoded screen video, simultaneous shares, black paused camera (local, remote, pinned and late join), resumed moving video, camera controls, stop/restart, browser stop, leave cleanup and rejoin.');
 } finally { await browser.close(); }
