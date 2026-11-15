@@ -25,7 +25,7 @@ export function meetingTarget(value) {
   if (typeof value !== 'string' || value.length > 2048) return '/';
   try {
     const target = new URL(value, 'http://meeting.invalid');
-    if (target.origin !== 'http://meeting.invalid' || !['/', '/index.html'].includes(target.pathname)) return '/';
+    if (target.origin !== 'http://meeting.invalid' || !['/', '/index.html', '/home', '/meeting'].includes(target.pathname)) return '/';
     return `${target.pathname}${target.search}${target.hash}`;
   } catch { return '/'; }
 }
@@ -128,7 +128,7 @@ export function createAuth({
     res.cookie(cookieName, token, { ...cookieOptions, maxAge: expiresAt - now() });
     return getSession({ headers: { cookie: `${cookieName}=${token}` } });
   }
-  const publicSession = session => ({ name: session.identity.name, kind: session.identity.kind, expiresAt: session.expiresAt });
+  const publicSession = session => ({ name: session.identity.name, kind: session.identity.kind, expiresAt: session.expiresAt, viewerKey: digest(`viewer:${session.identity.id}`) });
   function limit(req, res, next) {
     const key = req.socket.remoteAddress || 'unknown', at = now();
     let entry = attempts.get(key);

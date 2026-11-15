@@ -10,6 +10,8 @@ import * as mediasoup from 'mediasoup';
 import { createAuth } from './auth.js';
 import { createRoomAccess } from './rooms.js';
 import { createRoomRecording } from './recording.js';
+import { createTranscription, createTranscriber } from './transcription.js';
+const transcribe = createTranscriber();
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
@@ -37,6 +39,7 @@ async function getRoom(id) {
   if (!creating.has(id)) creating.set(id, (async () => {
     const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), activeSpeaker: null, board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
     room.recording = createRoomRecording({ peers: room.peers, publish: data => broadcast(room, null, 'recordingState', data) });
+    room.transcription = createTranscription({ peers: room.peers, transcribe, publish: (event, data) => broadcast(room, null, event, data) });
     room.audioLevels = await room.router.createAudioLevelObserver({ maxEntries: 1, threshold: -65, interval: 300 });
     room.audioLevels.on('volumes', volumes => {
       const producer = volumes[0]?.producer;
@@ -65,7 +68,12 @@ const roomAccess = createRoomAccess({ auth, onChange(data) {
 } });
 app.use(roomAccess.router);
 app.get(['/auth', '/auth.html'], (_req, res) => res.set({ 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" }).sendFile(fileURLToPath(new URL('./public/auth.html', import.meta.url))));
-app.get(['/', '/index.html'], auth.requireSession, (_req, res) => res.sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
+app.get(['/', '/index.html', '/home'], auth.requireSession, (req, res) => {
+  // Preserve existing invitation URLs while making the root the actual homepage.
+  if (req.query.room) return res.redirect(`/meeting${req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''}`);
+  res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/home.html', import.meta.url)));
+});
+app.get('/meeting', auth.requireSession, (_req, res) => res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
 app.use(express.static('public', { index: false }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = tls ? createHttpsServer(tls, app) : createServer(app);
@@ -125,14 +133,23 @@ async function action(peer, method, data) {
     peer.role = access.role; peer.room = room;
     peer.roomId = data.room;
     room.recording.beforeJoin();
+    room.transcription.beforeJoin();
     peer.room.peers.add(peer);
+    peer.visitId = roomAccess.joined(peer.identity, data.room);
     room.recording.membershipChanged();
+    room.transcription.membershipChanged();
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
+    return { transcription: room.transcription.snapshot(), room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
   switch (method) {
+    case 'transcriptionRequest': return room.transcription.request(peer);
+    case 'transcriptionConsent': return room.transcription.consent(peer, data.id, data.allow);
+    case 'transcriptionStop': return room.transcription.stop(peer, data.id);
+    case 'transcriptionAudio': return room.transcription.audio(peer, data);
+    case 'transcriptionFlushed': return room.transcription.flushed(peer, data.id);
+    case 'transcriptionFailed': return room.transcription.failed(peer, data.id);
     case 'recordingRequest': return room.recording.request(peer);
     case 'recordingConsent': return room.recording.consent(peer, data.id, data.allow);
     case 'recordingStop': return room.recording.stop(peer, data.id);
@@ -281,13 +298,14 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     clearTimeout(expiry);
     queue.finally(() => {
+      roomAccess.left(peer.visitId);
       for (const t of peer.transports.values()) t.close();
       const room = peer.room;
       if (room) {
         if (room.activeSpeaker === peer.id) setActiveSpeaker(room, null);
-        room.peers.delete(peer); room.recording.memberLeft(peer.id); clearTarget(room, peer.id);
+        room.peers.delete(peer); room.recording.memberLeft(peer.id); room.transcription.memberLeft(peer.id); clearTarget(room, peer.id);
         broadcast(room, null, 'participantLeft', { peerId: peer.id });
-        if (!room.peers.size) { room.recording.dispose(); room.router.close(); rooms.delete(peer.roomId); }
+        if (!room.peers.size) { room.recording.dispose(); room.transcription.dispose(); room.router.close(); rooms.delete(peer.roomId); }
       }
     });
   });

@@ -1,4 +1,4 @@
-export function setupRooms({ $, identity, joined, onChange, onError }) {
+export function setupRooms({ $, identity, joined, onChange, onError, onEnded = () => {} }) {
   const params = new URLSearchParams(location.search), fragment = new URLSearchParams(location.hash.slice(1));
   let roomId = params.get('room') || '', invitation = fragment.get('invite') || '', current = null;
   async function api(path, data) {
@@ -64,7 +64,7 @@ export function setupRooms({ $, identity, joined, onChange, onError }) {
   };
   $('endRoom').onclick = async () => {
     if (!confirm('End this room for everyone? Its invitations will stop working.')) return;
-    try { update((await api(`/${roomId}/end`, {})).room); $('roomNotice').textContent = 'This room has ended.'; await list(); }
+    try { update((await api(`/${roomId}/end`, {})).room); onEnded(); }
     catch (error) { onError(error); }
   };
   return {

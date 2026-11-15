@@ -66,3 +66,41 @@ test('locking, rotating invitations, ending, and expiry apply on the server', as
   assert.equal((await h.request('/api/rooms/resolve', { roomId: room.id }, owner)).status, 403);
   assert.equal(changes.at(-1).ended, true);
 });
+
+test('history is isolated per identity and keeps ended meetings and actual visits', async t => {
+  const h = await harness(t), owner = await h.identity('account', 'owner'), other = await h.identity('account', 'other'), guest = await h.identity('guest', 'Guest');
+  const { room, invitation } = await (await h.request('/api/rooms', { name: 'History team' }, owner)).json();
+  const history = async cookie => (await (await h.request('/api/rooms/history', undefined, cookie)).json()).meetings;
+  assert.equal((await history(owner)).length, 1);
+  assert.deepEqual(await history(other), []); assert.deepEqual(await history(guest), []);
+  // Looking at an invitation is not the same as joining a meeting.
+  await h.request('/api/rooms/resolve', { roomId: room.id, invitation }, guest);
+  assert.deepEqual(await history(guest), []);
+  const session = h.auth.getSession({ headers: { cookie: guest } });
+  const visit = h.access.joined(session.identity, room.id); h.access.left(visit);
+  assert.equal((await history(guest))[0].visits, 1);
+  assert.ok((await history(guest))[0].lastLeftAt);
+  await h.request(`/api/rooms/${room.id}/end`, {}, owner);
+  assert.equal((await history(owner))[0].ended, true);
+  assert.equal((await history(guest))[0].ended, true);
+  assert.deepEqual(await history(other), []);
+  assert.equal((await h.request('/api/rooms/history')).status, 401);
+});
+
+test('join by name preserves invitation, lock and revocation checks', async t => {
+  const h = await harness(t), owner = await h.identity('account', 'owner'), guest = await h.identity('guest', 'Guest');
+  const { room, invitation } = await (await h.request('/api/rooms', { name: 'Project team' }, owner)).json();
+  const find = (cookie, data) => h.request('/api/rooms/find', data, cookie);
+  assert.equal((await find(owner, { name: 'project TEAM' })).status, 200);
+  assert.equal((await find(guest, { name: 'Project team' })).status, 403);
+  assert.equal((await find(guest, { name: 'Project team', invitation })).status, 200);
+  assert.equal((await find(guest, { name: 'Different name', invitation })).status, 403);
+  await h.request(`/api/rooms/${room.id}/lock`, { locked: true }, owner);
+  assert.equal((await find(guest, { name: 'Project team', invitation })).status, 403);
+  await h.request(`/api/rooms/${room.id}/lock`, { locked: false }, owner);
+  await h.request(`/api/rooms/${room.id}/invitation`, {}, owner);
+  assert.equal((await find(guest, { name: 'Project team', invitation })).status, 403);
+  await h.request('/api/rooms', { name: 'Project team' }, owner);
+  assert.equal((await find(owner, { name: 'Project team' })).status, 409);
+  assert.equal((await find(owner, { roomId: room.id })).status, 200);
+});

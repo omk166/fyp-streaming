@@ -135,6 +135,8 @@ test('secure deployment uses host-only secure cookies and rate limits attempts',
 
 test('meeting redirects preserve room parameters and block external redirects', () => {
   assert.equal(meetingTarget('/?room=team&mode=vp9'), '/?room=team&mode=vp9');
+  assert.equal(meetingTarget('/meeting?room=team#invite=example'), '/meeting?room=team#invite=example');
+  assert.equal(meetingTarget('/home'), '/home');
   for (const value of ['https://attacker.example', '//attacker.example/', '/auth', '/\\attacker.example/', 'javascript:alert(1)']) assert.equal(meetingTarget(value), '/');
 });
 

@@ -22,7 +22,7 @@ async function rejectedUpgrade(cookie, requestOrigin) {
 }
 try {
   const testRoom = await createTestRoom(browser, base, room);
-  target = `/?synthetic=1&${testRoom.query}${testRoom.fragment}`;
+  target = `/meeting?synthetic=1&${testRoom.query}${testRoom.fragment}`;
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + target);
@@ -73,7 +73,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#feedback').textContent.includes('incorrect'));
   await page.locator('#loginPassword').fill(password);
   await page.locator('#loginForm [type=submit]').click();
-  await page.waitForURL(base + target);
+  await page.waitForURL(base + '/');
+  await page.goto(base + target);
   await page.waitForFunction(() => !document.querySelector('#join').disabled);
   assert.equal(await page.locator('#username').inputValue(), 'Account Alice');
   await page.reload();

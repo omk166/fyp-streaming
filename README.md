@@ -10,6 +10,28 @@ This is a research prototype. A separate entry page supports email/password acco
 
 ## Run locally
 
+After signing in, `/` opens your homepage with **New meeting**, **Join a meeting**
+and private meeting history. The call interface is at `/meeting`; old invitation
+URLs continue to work. Leaving or ending a meeting returns everyone affected to
+the homepage. Leaving alone keeps the room available to its other participants.
+
+History includes rooms you own and meetings you have joined since this feature
+was installed; earlier participant attendance cannot be reconstructed. Account
+history persists in the existing private SQLite database. Guest history belongs
+to the current guest session. Ended and expired rooms remain listed and cannot
+be rejoined. A participant still needs a current invitation link or meeting name
+plus invitation code; history does not bypass locks or invitation revocation.
+
+Collected caption downloads remain available on the homepage in the same tab
+after leaving, until the next meeting replaces them, sign-out, or tab closure.
+This uses temporary browser session storage, not a server transcript archive.
+Existing local recording downloads finish before the redirect.
+
+Live Arabic/English transcription is an optional server-side prototype with
+separate unanimous consent, speaker labels and TXT/SRT downloads. It remains
+disabled until the private speech worker is configured. See the
+[Dubai speech setup and current limits](speech/README.md).
+
 For different devices on the same Wi-Fi, see [the HTTPS LAN demo setup](LAN-DEMO.md). It includes certificate trust, scoped firewall rules and a launcher. A Windows laptop and MacBook call was confirmed working by the project owner on October 31, 2026; this is a functional check, not a measured multi-device performance trial.
 
 Requires Node.js 22.13+ (built-in SQLite without an experimental CLI flag); installation may download a native mediasoup worker. A compiler/Python toolchain is needed if no prebuilt worker is available. See the [official installation requirements](https://mediasoup.org/documentation/v3/mediasoup/installation/).

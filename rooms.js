@@ -10,10 +10,17 @@ export function createRoomAccess({ auth, onChange = () => {}, now = Date.now }) 
     id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     invite_hash TEXT NOT NULL, locked INTEGER NOT NULL DEFAULT 0, ended INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
-  ); CREATE INDEX IF NOT EXISTS rooms_owner ON meeting_rooms(owner_id);`);
+  ); CREATE INDEX IF NOT EXISTS rooms_owner ON meeting_rooms(owner_id);
+  CREATE TABLE IF NOT EXISTS meeting_visits (
+    id TEXT PRIMARY KEY, identity_key TEXT NOT NULL,
+    room_id TEXT NOT NULL REFERENCES meeting_rooms(id) ON DELETE CASCADE,
+    joined_at INTEGER NOT NULL, left_at INTEGER
+  ); CREATE INDEX IF NOT EXISTS visits_identity ON meeting_visits(identity_key, joined_at);`);
+  // A previous process cannot still have live peers. Do not invent offline time.
+  db.prepare('UPDATE meeting_visits SET left_at = joined_at WHERE left_at IS NULL').run();
   const get = id => typeof id === 'string' && /^[a-f0-9]{24}$/.test(id) ? db.prepare('SELECT * FROM meeting_rooms WHERE id = ?').get(id) : null;
   const isOwner = (identity, row) => identity.kind === 'account' && row.owner_id === identity.id;
-  const view = (row, identity) => ({ id: row.id, name: row.name, locked: Boolean(row.locked), ended: Boolean(row.ended), expiresAt: row.expires_at, role: isOwner(identity, row) ? 'owner' : 'participant' });
+  const view = (row, identity) => ({ id: row.id, name: row.name, locked: Boolean(row.locked), ended: Boolean(row.ended), createdAt: row.created_at, expiresAt: row.expires_at, role: isOwner(identity, row) ? 'owner' : 'participant' });
   function authorize(identity, id, invitation) {
     const row = get(id);
     if (!row || row.ended || row.expires_at <= now()) throw unavailable();
@@ -51,6 +58,18 @@ export function createRoomAccess({ auth, onChange = () => {}, now = Date.now }) 
     const rows = req.identity.kind === 'account' ? db.prepare('SELECT * FROM meeting_rooms WHERE owner_id = ? AND ended = 0 AND expires_at > ? ORDER BY created_at DESC').all(req.identity.id, now()) : [];
     res.json({ rooms: rows.map(row => view(row, req.identity)) });
   });
+  router.get('/api/rooms/history', (req, res) => {
+    const rows = db.prepare(`SELECT r.*, v.last_joined_at, v.last_left_at, v.visits
+      FROM meeting_rooms r LEFT JOIN (
+        SELECT room_id, max(joined_at) AS last_joined_at, max(left_at) AS last_left_at, count(*) AS visits
+        FROM meeting_visits WHERE identity_key = ? GROUP BY room_id
+      ) v ON v.room_id = r.id
+      WHERE (r.owner_id = ? AND ? = 'account') OR v.room_id IS NOT NULL
+      ORDER BY coalesce(v.last_joined_at, r.created_at) DESC, r.id LIMIT 100`)
+      .all(req.identity.id, req.identity.id, req.identity.kind);
+    res.json({ meetings: rows.map(row => ({ ...view(row, req.identity),
+      lastJoinedAt: row.last_joined_at || null, lastLeftAt: row.last_left_at || null, visits: row.visits || 0 })) });
+  });
   router.post('/api/rooms', (req, res) => {
     if (req.identity.kind !== 'account') return res.status(403).json({ error: 'Log in to an account to create a room. Guests can join by invitation.' });
     const name = req.body?.name;
@@ -62,6 +81,20 @@ export function createRoomAccess({ auth, onChange = () => {}, now = Date.now }) 
     res.status(201).json({ room: view(get(id), req.identity), invitation });
   });
   router.post('/api/rooms/resolve', (req, res) => res.json({ room: authorize(req.identity, req.body?.roomId, req.body?.invitation) }));
+  router.post('/api/rooms/find', (req, res) => {
+    const { name, invitation, roomId } = req.body || {};
+    if (roomId) return res.json({ room: authorize(req.identity, roomId, invitation) });
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 48) return res.status(400).json({ error: 'Enter a meeting name or paste an invitation link.' });
+    let rows = [];
+    if (typeof invitation === 'string' && /^[A-Za-z0-9_-]{43}$/.test(invitation)) {
+      rows = db.prepare('SELECT * FROM meeting_rooms WHERE name = ? COLLATE NOCASE AND invite_hash = ?').all(name.trim(), hash(invitation));
+    } else if (req.identity.kind === 'account') {
+      rows = db.prepare('SELECT * FROM meeting_rooms WHERE name = ? COLLATE NOCASE AND owner_id = ? AND ended = 0 AND expires_at > ?').all(name.trim(), req.identity.id, now());
+    }
+    if (rows.length > 1) return res.status(409).json({ error: 'Several of your meetings share this name. Open one from history or use its invitation link.' });
+    if (!rows.length) return res.status(403).json({ error: 'Use a current invitation link, or enter the meeting name and invitation code. Owners can open their meetings from history.' });
+    res.json({ room: authorize(req.identity, rows[0].id, invitation) });
+  });
   router.post('/api/rooms/:id/lock', (req, res) => {
     owner(req.identity, req.params.id);
     if (typeof req.body?.locked !== 'boolean') return res.status(400).json({ error: 'Choose whether to lock the room.' });
@@ -77,6 +110,7 @@ export function createRoomAccess({ auth, onChange = () => {}, now = Date.now }) 
   router.post('/api/rooms/:id/end', (req, res) => {
     owner(req.identity, req.params.id);
     db.prepare('UPDATE meeting_rooms SET ended = 1 WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE meeting_visits SET left_at = ? WHERE room_id = ? AND left_at IS NULL').run(now(), req.params.id);
     const room = view(get(req.params.id), req.identity); onChange(room);
     res.json({ room });
   });
@@ -84,5 +118,12 @@ export function createRoomAccess({ auth, onChange = () => {}, now = Date.now }) 
     const status = [400, 403, 413].includes(error.status) ? error.status : 500;
     res.status(status).json({ error: status === 403 ? error.message : status === 400 ? 'Invalid request.' : status === 413 ? 'Request too large.' : 'Room request could not be completed.' });
   });
-  return { router, authorize };
+  return { router, authorize,
+    joined(identity, roomId) {
+      const id = randomBytes(16).toString('hex');
+      db.prepare('INSERT INTO meeting_visits (id, identity_key, room_id, joined_at) VALUES (?, ?, ?, ?)').run(id, identity.id, roomId, now());
+      return id;
+    },
+    left(id) { if (id) db.prepare('UPDATE meeting_visits SET left_at = ? WHERE id = ? AND left_at IS NULL').run(now(), id); },
+  };
 }

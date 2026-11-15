@@ -23,9 +23,10 @@ try {
   assert.equal(await a.locator('#stage .tile').getAttribute('data-peer-id'), aId);
   await b.locator('#camera').click();
   await a.waitForFunction(id => document.querySelector(`.tile[data-peer-id="${id}"]`)?.dataset.paused === 'true' && window.lab.activeSpeaker === id, bId);
+  assert.deepEqual(await b.evaluate(() => window.lab.errors), []);
   await b.locator('#leave').click();
   await a.waitForFunction(() => window.lab.activeSpeaker === null && !document.querySelector('.active-speaker'));
-  for (const p of pages) assert.deepEqual(await p.evaluate(() => window.lab.errors), []);
+  assert.deepEqual(await a.evaluate(() => window.lab.errors), []);
   await a.locator('#leave').click();
   console.log('PASS: real microphone RTP audio levels highlight Alice/Bob on both endpoints; all-muted silence clears highlight; local pin remains stable; camera-off speaker remains identified; departure clears state.');
 } finally { await browser.close(); }

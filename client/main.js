@@ -1,6 +1,7 @@
 import { Device } from 'mediasoup-client';
 import { setupRooms } from './rooms.js';
 import { setupRecording } from './recording-controls.js';
+import { setupTranscription } from './transcription.js';
 let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
 // Look in the pop-out window too: the toolbar and screen tile move there while it is open.
 const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
@@ -14,15 +15,16 @@ const reactionIcons = { 'thumbs-up': '\u{1F44D}', heart: '\u{2764}\u{FE0F}', lau
 let serial = 0;
 const pending = new Map(), seen = new Set();
 const entryUrl = () => `/auth?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
-let identity = null;
+let identity = null, signingOut = false;
 const roomControls = setupRooms({ $, identity: () => identity, joined: () => state.joined,
-  onChange: value => { state.room = value; }, onError: fail });
+  onChange: value => { state.room = value; }, onError: fail, onEnded: () => returnHome('ended') });
 const recordingControls = setupRecording({ $, state, rpc, tiles: () => [...tiles.values()],
   audioTracks: () => [
     ...(stream?.getAudioTracks() || []).map(track => ({ track, peerId: state.peerId })),
     ...(screenStream?.getAudioTracks() || []).map(track => ({ track, peerId: state.peerId })),
     ...[...state.consumers.values()].filter(c => c.kind === 'audio').map(c => ({ track: c.track, peerId: c.appData.peerId })),
   ], notice: message => { $('status').textContent = message; } });
+const transcriptionControls = setupTranscription({ $, state, rpc, microphone: () => stream?.getAudioTracks()[0], notice: message => { $('status').textContent = message; } });
 Object.defineProperty(state, 'recorderRunning', { get: () => recordingControls.running });
 async function loadIdentity() {
   try {
@@ -38,12 +40,13 @@ async function loadIdentity() {
   } catch (error) { fail(error); }
 }
 $('logout').onclick = async () => {
+  signingOut = true;
   $('logout').disabled = true;
   try {
     const response = await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     if (!response.ok) throw Error('Could not sign out. Please try again.');
-    await leave(); location.assign(entryUrl());
-  } catch (error) { fail(error); $('logout').disabled = false; }
+    await leave(); sessionStorage.removeItem('meeting-exit'); location.assign('/auth?next=%2F');
+  } catch (error) { signingOut = false; fail(error); $('logout').disabled = false; }
 };
 function event(type, data = {}) { state.events.push({ timestamp: new Date().toISOString(), type, ...data }); }
 function fail(error) { state.errors.push(String(error)); $('status').textContent = String(error); event('error', { message: String(error) }); }
@@ -249,7 +252,7 @@ async function join() {
   session++;
   $('join').disabled = true;
   const started = performance.now();
-  let receivedRecording = null;
+  let receivedRecording = null, receivedTranscription = null;
   try {
     state.metadata = { runId: params.get('run') || crypto.randomUUID(), mode: $('mode').value, synthetic: $('synthetic').checked, syntheticClock: $('synthetic').checked ? 'timer' : null, userAgent: navigator.userAgent, startedAt: new Date().toISOString(), origin: location.origin };
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
@@ -271,11 +274,22 @@ async function join() {
         roomControls.changed(message.data);
       } else if (message.event === 'activeSpeaker') {
         state.activeSpeaker = message.data.peerId; refreshParticipantUI();
+      } else if (message.event === 'transcriptionState') {
+        receivedTranscription = message.data;
+        if (state.joined) transcriptionControls.update(message.data);
+      } else if (message.event === 'transcriptSegment') {
+        transcriptionControls.segment(message.data);
+      } else if (message.event === 'transcriptionWarning') {
+        transcriptionControls.warning(message.data.message);
+      } else if (message.event === 'transcriptionProgress') {
+        transcriptionControls.progress(message.data);
+      } else if (message.event === 'transcriptionFlush') {
+        transcriptionControls.flush(message.data);
       } else if (message.event === 'recordingState') {
         receivedRecording = message.data;
         recordingControls.update(message.data);
       } else if (message.event === 'roomEnded') {
-        leave(); roomControls.changed(message.data); $('status').textContent = 'The owner ended this room.';
+        roomControls.changed(message.data); returnHome('ended');
       } else if (message.event === 'wbSegment') {
         annotationRemote(message.data);
       } else if (message.event === 'wbFreeze') {
@@ -292,9 +306,10 @@ async function join() {
     };
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
     ws.onclose = async ({ code }) => {
+      if (returningHome || signingOut) return;
       if (code === 1008) { await leave(); location.replace(entryUrl()); return; }
-      if (code === 4000) { leave(); $('status').textContent = 'This room has ended.'; return; }
-      if (state.joined) { fail(Error('Disconnected; rejoin required')); leave(); }
+      if (code === 4000) { returnHome('ended'); return; }
+      if (state.joined) returnHome('disconnected');
     };
     const info = await rpc('join', roomControls.credentials());
     state.peerId = info.peerId; state.username = info.username;
@@ -318,6 +333,7 @@ async function join() {
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; state.joinMs = performance.now() - started;
     recordingControls.update(receivedRecording || info.recording);
+    transcriptionControls.update(receivedTranscription || info.transcription);
     roomControls.refresh();
     event('joined', { joinMs: state.joinMs });
     for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = false;
@@ -327,9 +343,22 @@ async function join() {
     timer = setInterval(sample, 1000); await sample();
   } catch (error) { fail(error); leave(); }
 }
+let returningHome = false;
+async function returnHome(reason = 'left') {
+  if (returningHome) return;
+  returningHome = true;
+  const last = { viewerKey: identity?.viewerKey, roomId: state.room?.id, name: state.room?.name, reason,
+    transcript: transcriptionControls.downloads() };
+  // Wait for the existing recorder to finalize and initiate its local download.
+  await leave();
+  try { sessionStorage.setItem('meeting-exit', JSON.stringify(last)); }
+  catch { try { sessionStorage.setItem('meeting-exit', JSON.stringify({ ...last, transcript: null })); } catch {} }
+  location.assign('/');
+}
 function leave() {
   state.joined = false; session++;
   const recordingFinished = recordingControls.leave();
+  transcriptionControls.leave();
   state.activeSpeaker = null;
   for (const timer of reactionTimers) clearTimeout(timer); reactionTimers.clear();
   $('reactions').replaceChildren(); participants.clear(); refreshParticipantUI();
@@ -360,6 +389,7 @@ async function toggle(kind, id) {
   const paused = !producer.paused;
   await rpc('pauseProducer', { id: producer.id, paused });
   paused ? producer.pause() : producer.resume();
+  if (kind === 'audio') transcriptionControls.resetAudio();
   if (kind === 'video') setVideoPaused('local', paused);
   event('toggle', { kind, paused });
   $(id).textContent = kind === 'audio' ? (paused ? 'Unmute microphone' : 'Mute microphone') : (paused ? 'Resume camera' : 'Pause camera');
@@ -624,7 +654,7 @@ function penSegment(m) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ method: 'wbSegment', data }));
 }
 $('username').value = params.get('username') || '';
-$('join').onclick = join; $('leave').onclick = leave;
+$('join').onclick = join; $('leave').onclick = () => returnHome(); $('home').onclick = () => returnHome();
 $('mic').onclick = () => toggle('audio', 'mic').catch(fail); $('camera').onclick = () => toggle('video', 'camera').catch(fail);
 $('chatForm').onsubmit = e => { e.preventDefault(); rpc('chat', { text: $('message').value }).catch(fail); $('message').value = ''; };
 $('export').onclick = () => {

@@ -1,0 +1,20 @@
+[Unit]
+Description=FYP private speech recognition worker
+After=network-online.target
+
+[Service]
+Type=simple
+# Replace user and absolute repository paths before installing.
+User=fyp
+WorkingDirectory=/opt/fyp-streaming
+Environment=WHISPER_MODEL=small
+Environment=WHISPER_DEVICE=cpu
+Environment=WHISPER_COMPUTE_TYPE=int8
+Environment=WHISPER_CPU_THREADS=2
+ExecStart=/opt/fyp-streaming/.venv-speech/bin/python /opt/fyp-streaming/speech/service.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

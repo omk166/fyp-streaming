@@ -13,7 +13,7 @@ try {
   for (const context of [guest, late]) assert.equal((await context.request.post(base + '/api/auth/guest', { headers, data: { name: 'Invited guest' } })).status(), 201);
   const hostPage = await owner.newPage(), guestPage = await guest.newPage();
   for (const page of [hostPage, guestPage]) page.on('pageerror', error => errors.push(error.message));
-  await hostPage.goto(base + '/?synthetic=1');
+  await hostPage.goto(base + '/meeting?synthetic=1');
   await hostPage.locator('#newRoomName').fill('Private team room'); await hostPage.locator('#createRoom').click();
   await hostPage.waitForFunction(() => !document.querySelector('#inviteLink').hidden && document.querySelector('#inviteLink').value.includes('#invite='));
   const link = await hostPage.locator('#inviteLink').inputValue(), url = new URL(link), roomId = url.searchParams.get('room'), invitation = new URLSearchParams(url.hash.slice(1)).get('invite');
@@ -49,7 +49,7 @@ try {
   const newLink = await hostPage.locator('#inviteLink').inputValue();
   const latePage = await late.newPage(); latePage.on('pageerror', error => errors.push(error.message));
   await latePage.goto(newLink); await latePage.locator('#join').click(); await latePage.waitForFunction(() => window.lab.joined);
-  await hostPage.locator('#leave').click(); await hostPage.reload();
+  await hostPage.locator('#leave').click(); await hostPage.waitForURL(base + '/'); await hostPage.goto(`${base}/meeting?room=${roomId}&synthetic=1`);
   await hostPage.waitForFunction(() => !document.querySelector('#join').disabled);
   assert.equal(await hostPage.locator('#roomOwner').isVisible(), true);
   await hostPage.locator('#join').click(); await hostPage.waitForFunction(() => window.lab.joined);
@@ -58,7 +58,7 @@ try {
   await hostPage.locator('#inviteLink').evaluate(el => { el.value = '[private invitation]'; });
   await hostPage.screenshot({ path: 'artifacts/private/protected-room.png', fullPage: true });
   hostPage.once('dialog', dialog => dialog.accept()); await hostPage.locator('#endRoom').click();
-  for (const page of [guestPage, latePage]) await page.waitForFunction(() => !window.lab.joined && document.querySelector('#status').textContent.includes('ended'));
+  for (const page of [hostPage, guestPage, latePage]) { await page.waitForURL(base + '/'); await page.waitForFunction(() => document.querySelector('#historyRows').textContent.includes('Ended')); }
   assert.equal((await owner.request.post(base + '/api/rooms/resolve', { headers, data: { roomId } })).status(), 403);
   assert.deepEqual(errors, []);
   console.log('PASS: owner creates room in UI, fragment invitation, guest admission, server rejects missing token/forged owner, lock excludes new joins while existing media remains, rotation revokes old link, owner reload persists permissions, ending closes all participants.');

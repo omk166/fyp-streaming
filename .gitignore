@@ -5,6 +5,7 @@ artifacts/raw/
 artifacts/private/
 *.log
 __pycache__/
+.venv-speech/
 certs/
 data/
 .env.*

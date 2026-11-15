@@ -55,7 +55,8 @@ try {
     assert.match(await tile.locator('.participant-status').innerText(), /Mic muted.*Hand raised/);
   }
   // Both persistent indicators must be correct for someone joining later.
-  await charlie.locator('#leave').click(); await charlie.locator('#join').click();
+  const charlieRoomUrl = charlie.url();
+  await charlie.locator('#leave').click(); await charlie.waitForURL(base + '/'); await charlie.goto(charlieRoomUrl); await charlie.locator('#join').click();
   await charlie.waitForFunction(() => window.lab.joined && [...document.querySelectorAll('.tile')].some(t => t.textContent.includes('Bob') && t.textContent.includes('Mic muted') && t.textContent.includes('Hand raised')));
   for (const id of ['react-like', 'react-heart', 'react-laugh']) {
     await alice.locator(`#${id}`).click();
@@ -82,7 +83,7 @@ try {
   assert.equal(await remoteBob.evaluate(t => getComputedStyle(t).backgroundColor), 'rgb(0, 0, 0)');
   assert.equal(await bob.locator('#track-local').evaluate(v => getComputedStyle(v).visibility), 'hidden');
   // A participant joining while Bob's camera is off must also see black.
-  await charlie.locator('#leave').click();
+  await charlie.locator('#leave').click(); await charlie.waitForURL(base + '/'); await charlie.goto(charlieRoomUrl);
   await charlie.locator('#join').click();
   await charlie.waitForFunction(() => window.lab.joined && [...document.querySelectorAll('.tile')].some(t => t.textContent.includes('Bob') && t.dataset.paused === 'true'));
   assert.equal(await bob.locator('#screen').innerText(), 'Share screen');
@@ -102,9 +103,10 @@ try {
   await bob.waitForFunction(() => document.querySelectorAll('[data-source="screen"]').length === 1);
   await charlie.locator('#leave').click();
   await bob.waitForFunction(() => window.lab.consumers.size === 2 && !document.querySelector('[data-source="screen"]'));
-  await bob.locator('#leave').click();
+  const bobRoomUrl = bob.url();
+  await bob.locator('#leave').click(); await bob.waitForURL(base + '/'); await bob.goto(bobRoomUrl);
   await bob.locator('#join').click(); await bob.waitForFunction(() => window.lab.joined && window.lab.consumers.size === 2);
-  for (const page of pages) assert.deepEqual(await page.evaluate(() => window.lab.errors), []);
+  for (const page of pages) assert.deepEqual(await page.evaluate(() => window.lab?.errors || []), []);
   assert.deepEqual(errors, []);
   console.log('PASS: three participants, usernames and safe text, local pin/unpin, named chat, local/remote mute and hand indicators, late join state, all three reactions delivered and expired, share cancellation, decoded screen video, simultaneous shares, black paused camera (local, remote, pinned and late join), resumed moving video, camera controls, stop/restart, browser stop, leave cleanup and rejoin.');
 } finally { await browser.close(); }

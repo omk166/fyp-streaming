@@ -94,6 +94,8 @@ try {
   await start([alice, bob, late]);
   const leaving = host.waitForEvent('download'); await host.locator('#leave').click(); await leaving;
   for (const page of [alice, bob, late]) await page.waitForFunction(() => window.lab.recording.phase === 'idle' && window.lab.joined);
+  await host.waitForURL(base + '/');
+  await host.goto(`${base}/meeting?synthetic=1&${room.query}${room.fragment}`);
   await host.locator('#join').click(); await host.waitForFunction(() => window.lab.joined);
   // Fault injection: the optional recorder must fail without tearing down the original call.
   await host.evaluate(() => {

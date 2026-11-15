@@ -3,7 +3,7 @@ const params = new URLSearchParams(location.search);
 let target = '/';
 try {
   const url = new URL(params.get('next') || '/', location.origin);
-  if (url.origin === location.origin && ['/', '/index.html'].includes(url.pathname)) target = url.pathname + url.search + (url.hash || location.hash);
+  if (url.origin === location.origin && ['/', '/index.html', '/home', '/meeting'].includes(url.pathname)) target = url.pathname + url.search + (url.hash || location.hash);
 } catch {}
 const room = new URL(target, location.origin).searchParams.get('room');
 if (room) { $('roomHint').textContent = `Joining room: ${room.slice(0, 48)}`; $('roomHint').hidden = false; }
