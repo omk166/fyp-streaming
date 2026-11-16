@@ -101,6 +101,111 @@ A new arrival stops the current recording before their media is admitted. The re
 
 Screen sound is a separate Opus producer associated with its screen video; microphone and screen audio have independent lifecycles. The server rejects screen audio without a screen and removes that sound when its screen closes. Audio-level speaker highlighting observes microphones only. `BROWSER_CHANNEL=chrome npm run test:screen-audio` uses generated display video/audio to verify receiver sound, microphone independence, the off option, source end and cleanup. Native screen/tab selection and real system audio still require checks on the demo devices.
 
+## Audio processing
+
+The meeting page has an **Audio processing** panel with a mode selector and two switches, **Echo cancellation** and **Noise suppression**. It applies to your microphone only; screen-share sound is always sent unchanged. **Audio info** opens a short explainer with a link to the test page.
+
+| Mode | `echoCancellation` | `noiseSuppression` | `autoGainControl` | Processing |
+| --- | --- | --- | --- | --- |
+| Off (raw) | false | false | false | none: the baseline |
+| Browser (built-in) | echo switch | noise switch | true | the browser's own (in Chrome/Edge: WebRTC AEC3, NS, AGC); both switches on = the previous app behaviour and the default |
+| Ours | false | false | false | DTLN-aec 128 (if echo is on), then DeepFilterNet3 (if noise is on), on this device |
+
+**Switching.** Every change captures a new microphone track for the requested mode (Ours also builds a new pipeline). It swaps that track into the existing mediasoup producer with `producer.replaceTrack`, then stops the old track and pipeline. The producer, consumers and call stay up; mute state carries over. The microphone producer uses `stopTracks: false` because the panel owns these tracks. After every change the panel shows what `track.getSettings()` actually reports for the three properties. For Ours it shows the raw capture feeding the pipeline. If the browser ignored a request, the panel says so. Chrome can give a new capture the processing of a capture of the same microphone that is still open. When the read-back shows that, the panel releases its old capture and captures once more, which causes a short gap in your sent audio but not in the call. If a mode cannot start (missing model file, no AudioWorklet or WebAssembly, a model that fails to load), the panel shows the reason and the previous mode stays active. If it had to release the old capture, it reopens it in the previous mode. Joining is the one exception, because there is no previous mode yet: if a saved Ours choice cannot start at join, the panel says so and uses Browser until you choose again. The choice is saved in `localStorage` (`audio-processing`). Mode changes are also recorded in the exported telemetry (`audioProcessing` events and `metadata.audioProcessing`). Live transcription and local recording follow the swapped track. With **Synthetic test media**, browser constraints do not apply to the generated tone (the panel says so). Ours still processes it.
+
+**Ours pipeline.** `client/audio/` holds the code: `controller.js` (panel), `pipeline.js` (Web Audio graph), `worklet.js` (AudioWorklet), `worker.js` (models), `engine.js` (the chain), `dtln-aec.js`, `deepfilter.js`, `playout.js`, `dsp.js`, `modes.js`.
+
+```
+raw mic (all browser processing off) ─► AudioWorklet ⇄ Worker [48k→16k ─► DTLN-aec 128 ─► 16k→48k ─► DeepFilterNet3 48k] ─► MediaStreamAudioDestinationNode ─► producer
+remote participants' audio ─► Web Audio ─┬─► speakers
+                                         └─► far-end reference bus ─► 48k→16k ─► delay line ─► DTLN-aec (second input)
+your shared tab's sound (played by that tab) ─► far-end reference bus only
+```
+
+- **Far-end reference.** With Ours and echo cancellation on, remote audio is played through Web Audio instead of the `<audio>` elements. The elements stay attached but muted, because Chrome only feeds remote WebRTC audio to Web Audio while it is attached to an element. The same samples go to the speakers and to the echo canceller. The sound of a tab you share is added to the reference only, because that tab already plays it locally. Other modes play remote audio exactly as before.
+- **Playout latency compensation.** The reference is tapped before playout, so its echo reaches the microphone later. The reference is first delayed by the browser-reported `baseLatency + outputLatency` plus the capture latency. Once far-end audio is playing, the worker measures the real echo path (GCC-PHAT between reference and microphone, once a second). After three consistent estimates it delays the reference so that it leads its echo by 4 ms (maximum 400 ms). The panel shows the delay in use and where it came from.
+- **Sample rates.** The AudioContext, the sent track and Opus stay at 48 kHz. DTLN-aec exists only at 16 kHz, so the echo stage resamples explicitly by a factor of 3 with a 96-tap Kaiser-windowed sinc low-pass (cut-off 7.2 kHz, 47.5-sample group delay at 48 kHz in each direction). With echo cancellation on, your voice is therefore limited to below 8 kHz. DeepFilterNet3 runs natively at 48 kHz.
+- **Latency.** The panel reports the added latency as two measured parts. *Model + resampling* is the delay between the chain's input and output streams, found by cross-correlation on live audio, so it needs speech. *Buffering* comes from counting samples in and out of the worklet (framing, worker round trip, output buffer). DTLN-aec's 24 ms (its 512-sample window minus the 128-sample hop) is part of the first figure. The Web Audio hops into and out of the graph are not visible from inside; the test page measures the full track-to-track delay. If the device cannot keep up, the worklet drops the oldest audio, counts it and the panel reports it.
+
+### Setting up the models
+
+```sh
+npm ci
+npm run build          # bundles client/audio and copies the LiteRT.js runtime to public/audio/vendor/litert/
+npm run audio:models   # model files into public/audio/models/, each checked against a pinned SHA-256
+```
+
+Generated files under `public/audio/` are ignored by Git. The Docker image runs both steps.
+
+The model weights come from the official repositories. DeepFilterNet also needs a WebAssembly build of libDF, its Rust runtime. The project publishes the source for one (libDF's `wasm` feature) but no prebuilt binary. `npm run audio:models` therefore installs the libDF build shipped in `@workadventure/noise-suppression` 0.2.0 (MIT package; libDF MIT OR Apache-2.0).
+
+- **Checks:** the script verifies the npm integrity value and the binary's SHA-256 (`8ebf2b21…7fe708`). It only accepts a file that exports libDF's `df_create`, `df_get_frame_length` and `df_process_frame`.
+- **Provenance:** according to that package, the binary is DeepFilterNet commit `d375b2d` patched to tract 0.23.8 for WebAssembly SIMD. It is a third-party build that this project has not rebuilt from source. The DeepFilterNet3 model shipped with it is byte-identical to the official one, and the binary can only call the four functions our glue hands it.
+- **Building your own instead** (needs Rust, the `wasm32-unknown-unknown` target and `wasm-pack`): in a DeepFilterNet checkout run `wasm-pack build libDF --target web --features wasm`, then `node scripts/audio-models.mjs --deepfilter-wasm=/path/to/DeepFilterNet/libDF/pkg/df_bg.wasm`. Untested here: WorkAdventure reports that upstream tract 0.21.x has no WebAssembly SIMD kernels, and that 0.21.5/0.21.6 fail to load DeepFilterNet3.
+- **Without libDF** (`node scripts/audio-models.mjs` alone), Ours with noise suppression on reports that the build is missing; echo cancellation still works.
+
+DeepFilterNet3 runs with libDF's default attenuation limit (none). `client/audio/deepfilter.js` is a minimal replacement for wasm-bindgen's JS glue.
+
+### Test page
+
+Open `/audio-test` (signed in, like the meeting) or follow the link in **Audio info**. Use Chrome or Edge, the same microphone and position for every mode, and keep the speaker volume fixed. All audio stays in the browser. The only upload is the recognition check, which says what it sends before you press it.
+
+1. **A/B recording:** one take per mode of the on-screen script, with a 3-second silent lead-in. Clips play back side by side with level meters and a level graph, and download as WAV. Tick *Play a noise clip* for the noise test (generated pink noise played through the speakers but kept out of the echo reference), or record in your own noisy room. The speech-to-noise estimate compares speech frames with the lead-in noise.
+2. **Echo test (speakers, not headphones):** a generated speech-like clip goes through a local WebRTC loopback and plays like a remote participant (routed into the echo canceller for Ours, exactly as in a meeting) while you stay silent. It reports the residual echo level, the reduction below the Off run, and the in-run ERLE where an unprocessed copy was captured at the same time (always for Ours; for Browser only if the browser allows a parallel raw capture). Results are marked invalid unless the Off recording actually correlates with the played clip and is at least 10 dB above the room noise.
+3. **Recognition check:** each take is cut into speech segments exactly as live transcription does (16 kHz averaging plus `public/speech-buffer.js`). The segments go through `POST /api/audio-test/transcribe`, which uses the same transcriber queue as meetings (`transcription.js`; session, same-origin, one request at a time and a per-session limit). The page shows the word error rate against the script. It needs `TRANSCRIPTION_URL`; otherwise the page says the result was not measured.
+4. **Results table:** settings read back, speech level, speech-to-noise, residual echo/ERLE, WER, processing time per frame, CPU (worker busy share of real time; Compute Pressure state where the browser offers it) and added latency (track to track against the raw microphone). Anything not measurable says why; published model figures are never used to fill gaps. *Download results* saves the table as JSON.
+
+### Validation
+
+`npm test` (52 tests) includes `tests/audio-dsp.test.mjs` and `tests/audio-modes.test.mjs`. They cover the FFT, resampling (pass band, alias rejection, chunk-size independence), delay estimation, DTLN-aec framing and its 384-sample delay, measured chain delay and reference alignment, speech-to-noise, WER, mode constraints, saved preferences, settings read-back and the recognition endpoint's checks. `npm run test:audio-ui` (`scripts/audio-processing.mjs`, Chrome by default, `BROWSER_CHANNEL=msedge` for Edge) runs against a local server on port 3100. It uses Chrome's fake devices with output muted. Set `SPEECH_TEST_WAV` to a spoken 48 kHz WAV for the speech checks; add `NOISE_DB=10` to feed the fake microphone that speech plus pink noise. Its three parts:
+
+- An offline check through the real worker: the official DTLN-aec sample recordings, and (with `SPEECH_TEST_WAV`) DeepFilterNet3 on that speech plus pink noise at 5 dB SNR.
+- Live switching in a two-participant call, with the read-back checked after every switch and the other participant's received audio checked to keep flowing from the same consumer.
+- The test page.
+
+Results so far (November 16, 2026, this Mac, Chrome 157 headless, fake devices; speech is a macOS `say` reading of the test script):
+
+- **DTLN-aec 128 offline** on the repository's samples: far-end single talk reduced by 31.5 dB; near-end single talk kept (0.4 dB level change, correlation 0.974 with the input); double talk changed by 0.7 dB. Measured chain delay 26 ms (24 ms model plus two resampling filters); 0.30 ms per 8 ms block offline.
+- **DeepFilterNet3 offline**, that speech plus pink noise at 5 dB SNR: noise between words −21.2 → −53.5 dBFS (32 dB removed); SI-SNR against the clean speech 5.6 → 15.0 dB; measured delay 30 ms; 0.28 ms per 10 ms frame. Both stages on the far-end sample: output −96.5 dBFS (echo and residual removed).
+- **Live call:** every switch (Browser → Off → Ours echo only → Ours echo + noise → Ours with both stages off → Browser without echo/noise → muted switch → Browser; in an earlier run without libDF, a failed switch to Ours with noise suppression kept Off and showed why) kept the same producer and consumer, and the other participant kept receiving non-silent audio. The read-back matched the request after each switch. Twice Chrome first returned the previous capture's settings for a new Browser capture, and the automatic re-capture fixed it (`audioProcessingRecapture` events). With echo only, Ours added 42–55 ms in the call (26 ms model + resampling, 16–29 ms buffering) at about 1 ms per 8 ms block and 15–20 % worker busy time. With both stages it ran at 0.8 ms per AEC block and 0.9 ms per DeepFilterNet3 frame, 20–22 % worker busy time.
+- **Test page, clean speech, Ours echo only:** track-to-track added latency 2.7 ms for Browser and 58–68 ms for Ours. WER through the local faster-whisper `base` worker was 0 % for all three modes in the last run. An earlier run gave 2.6 % for Browser and Ours ("clear" heard as "clean"), so single takes are noisy.
+- **Test page, speech + pink noise at 10 dB SNR, Ours echo + noise:**
+
+  | | Off | Browser | Ours |
+  | --- | --- | --- | --- |
+  | Speech-to-noise estimate | 11.7 dB | 21 dB | lead-in noise (−24.7 dBFS raw) removed to below −100 dBFS |
+  | WER | 2.6 % | 0 % | 5.3 % ("voice" → "goals", "clear" → "clean") |
+  | Added latency (track to track) | reference | 4.3 ms in one run, not alignable in another | 113–123 ms (56 ms models + resampling, 27–37 ms buffering, the rest Web Audio hops) |
+
+  Two runs on identical input gave the same WER. This is one synthetic voice and one recognizer, so it is not evidence about DeepFilterNet3 in general, but it is the recognition risk the info tab warns about.
+- **Echo test:** with a file as the microphone, no played sound can reach it, and the test correctly reported no valid result.
+
+These are functional checks with synthetic audio, not quality results. Not yet verified: a real microphone and speakers (acoustic echo, real room noise, the echo-path estimate), listening quality, Edge, Firefox/Safari, mobile, slow machines, and multi-device calls.
+
+### Licences
+
+| Component | Pinned to | Licence | How it is used |
+| --- | --- | --- | --- |
+| DTLN-aec 128 model (`breizhn/DTLN-aec`, Westhausen & Meyer) | commit `9d24e12`, SHA-256 checked | MIT (`public/audio/models/LICENSES/`) | downloaded by `npm run audio:models` |
+| DeepFilterNet3 model (`Rikorose/DeepFilterNet`, `DeepFilterNet3_onnx.tar.gz`) | commit `7b14b89`, SHA-256 `c94d91f7…` | MIT OR Apache-2.0 | downloaded by `npm run audio:models` |
+| libDF WebAssembly build (DeepFilterNet) | `@workadventure/noise-suppression` 0.2.0, npm integrity + SHA-256 `8ebf2b21…` | MIT OR Apache-2.0 (WorkAdventure package: MIT) | installed by `npm run audio:models`; third-party build, see above |
+| LiteRT.js (`@litertjs/core`, `@litertjs/wasm-utils`) | 2.6.0 | Apache-2.0 | npm dependency; runs the DTLN-aec TF-lite files in a Worker |
+| DTLN-aec sample recordings (from the AEC Challenge) | commit `9d24e12` | not stated in the DTLN-aec repository | downloaded only by `scripts/audio-processing.mjs` into ignored `data/audio-test/`; not redistributed; check the AEC Challenge data terms before publishing results based on them |
+
+The far-end and noise clips on the test page are generated in code (`client/audio-test/signals.js`) and carry no third-party licence. The model figures quoted in **Audio info** are reported results from the literature, not measurements by this project.
+
+### Known limits
+
+- With both stages on, Ours added 113–123 ms track to track on this Mac, a large share of the guide's sub-200 ms original-audio target. Most of it is the models (24 ms DTLN-aec + 30 ms DeepFilterNet3 + 2 ms resampling); the rest is worklet/worker buffering and Web Audio hops. Running the models inside the AudioWorklet, as WorkAdventure does, would remove most of the worker buffering. This has not been tried.
+- DeepFilterNet3 uses libDF's default (unlimited) attenuation, so noise between words goes to digital silence. WorkAdventure reports that listeners hear this as dropouts and a metallic background; a limit (for example 25 dB) is not configured here.
+- The DeepFilterNet3 runtime is a third-party libDF build (above).
+- Echo cancellation in Ours narrows your voice to below 8 kHz; Ours has no automatic gain control, so levels differ from Browser mode.
+- The far-end reference only contains audio this page plays. Sound from other apps or tabs (other than a shared tab) is not cancelled by Ours.
+- Echo-path measurement needs far-end speech; until then the reference uses the browser-reported latency. Very long echo paths (over 400 ms) are not compensated.
+- Worker round trips and the output buffer add about 15–37 ms of buffering on top of the models.
+- The test page uses one English script; Arabic recognition is not covered. One take per mode gives noisy WER and speech-to-noise figures; repeat takes before drawing conclusions.
+- Browser mode's own processing cost is not measurable from a web page. The worker's busy share excludes the AudioWorklet and Web Audio graph.
+
 ## Active speaker
 
 Microphone RTP audio levels drive a green camera-tile outline and a Speaking label in the participant list. No speech recognition or AI is used. Muting, silence and departure clear the indicator; pinning stays local and is not changed by speaker events. Only microphone producers are observed, so screen sound does not count as a person speaking. `BROWSER_CHANNEL=chrome npm run test:speaker` exercises switching, silence, camera-off speaking and cleanup using synthetic microphone audio over the real SFU.

@@ -3,6 +3,7 @@ import { Device } from 'mediasoup-client';
 import { setupRooms } from './rooms.js';
 import { setupRecording } from './recording-controls.js';
 import { setupTranscription } from './transcription.js';
+import { setupAudioProcessing } from './audio/controller.js';
 let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
 // Look in the pop-out window too: the toolbar and screen tile move there while it is open.
 const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
@@ -27,6 +28,14 @@ const recordingControls = setupRecording({ $, state, rpc, tiles: () => [...tiles
   ], notice: message => { $('status').textContent = message; } });
 const transcriptionControls = setupTranscription({ $, state, rpc, microphone: () => stream?.getAudioTracks()[0], notice: message => { $('status').textContent = message; } });
 const whiteboard = setupWhiteboard({ $, state, rpc });
+// Microphone processing (Off / Browser / Ours); see client/audio/. Screen-share sound is not affected.
+const audioProcessing = setupAudioProcessing({ $, event, onActive: detail => { if (state.metadata) state.metadata.audioProcessing = detail; } });
+// Keep `stream` holding the microphone track that is actually published (recording and transcription read it).
+function replaceStreamAudio(previous, current) {
+  if (!stream || previous === current) return;
+  if (previous && stream.getAudioTracks().includes(previous)) stream.removeTrack(previous);
+  if (current && !stream.getAudioTracks().includes(current)) stream.addTrack(current);
+}
 Object.defineProperty(state, 'recorderRunning', { get: () => recordingControls.running });
 async function loadIdentity() {
   try {
@@ -73,9 +82,24 @@ function refreshParticipantUI() {
     item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.role === 'owner' ? ' (Owner)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}${peer.peerId === state.activeSpeaker ? ' · Speaking' : ''}`;
     $('participants').append(item);
   }
+  refreshChatRecipients();
   const raised = participants.get(state.peerId)?.handRaised || false;
   $('hand').textContent = raised ? 'Lower hand' : 'Raise hand';
   $('hand').setAttribute('aria-pressed', String(raised));
+}
+// Private chat: the recipient list mirrors the participant list; a recipient who leaves falls back to Everyone.
+function refreshChatRecipients() {
+  const select = $('chatTo'), chosen = select.value;
+  select.replaceChildren(new Option('Everyone', ''));
+  for (const peer of participants.values()) if (peer.peerId !== state.peerId) select.append(new Option(`${peer.username} (private)`, peer.peerId));
+  select.value = [...select.options].some(o => o.value === chosen) ? chosen : '';
+  $('messageLabel').textContent = select.value ? `Private message to ${participants.get(select.value)?.username}` : 'Room message';
+}
+function showPrivateChat({ from, to, text }) {
+  const mine = from.peerId === state.peerId;
+  $('chat').textContent += `[Private] ${mine ? `You → ${to.username}` : `${from.username} → you`}: ${text}\n`;
+  if (!mine) $('chatNotice').textContent = `New private message from ${from.username}.`;
+  event('privateChat', { incoming: !mine });
 }
 function showReaction(data) {
   if (!reactionIcons[data.reaction]) return;
@@ -134,6 +158,7 @@ function setVideoPaused(id, paused) {
   }
 }
 function removeTrack(id) {
+  audioProcessing.removeRemoteAudio(id);
   const tile = tiles.get(id);
   tile?.remove(); tiles.delete(id); $(`track-${id}`)?.remove();
   for (const [target, o] of overlays) if (o.id === id) { overlays.delete(target); frozen.delete(target); }
@@ -155,13 +180,13 @@ function render(track, id, muted = false, info = {}) {
     label.append(badges);
     footer.append(label, button); tile.append(el, footer); tiles.set(id, tile); updatePin(); refreshParticipantUI();
     if (info.source === 'screen') attachOverlay(tile.dataset.peerId, tile, el, id);
-  } else $('media').append(el);
+  } else { $('media').append(el); audioProcessing.addRemoteAudio(id, el, track); }
   el.play().catch(error => event('playbackBlocked', { message: error.message }));
 }
 async function stopScreen() {
   const closing = [screenAudioProducer, screenProducer].filter(Boolean);
   screenProducer = null; screenAudioProducer = null;
-  screenStream?.getTracks().forEach(t => t.stop()); screenStream = null;
+  screenStream?.getTracks().forEach(t => t.stop()); screenStream = null; audioProcessing.setLocalScreenAudio(null);
   removeTrack('screen-local');
   for (const producer of closing) producer.close();
   state.producers = state.producers.filter(p => !closing.includes(p));
@@ -190,7 +215,10 @@ async function shareScreen() {
       screenAudioProducer = await send.produce({ track: sound, appData: { source: 'screenAudio' } });
       if (!state.joined || session !== currentSession) { screenAudioProducer.close(); captured.getTracks().forEach(t => t.stop()); return; }
       state.producers.push(screenAudioProducer);
+      // The shared tab keeps playing this sound through the speakers, so our echo canceller needs it as far-end reference.
+      audioProcessing.setLocalScreenAudio(sound);
       sound.onended = async () => {
+        audioProcessing.setLocalScreenAudio(null);
         const ended = screenAudioProducer; screenAudioProducer = null;
         if (!ended) return;
         ended.close(); state.producers = state.producers.filter(p => p !== ended);
@@ -335,6 +363,8 @@ async function join() {
         if (!message.data.silent) $('status').textContent = `${message.data.username} cleared the screen annotations.`;
       } else if (message.event === 'reaction') {
         showReaction(message.data);
+      } else if (message.event === 'privateChat') {
+        showPrivateChat(message.data);
       } else if (message.event === 'chat') { $('chat').textContent += `${message.data.username || 'Guest'}: ${message.data.text}\n`; event('chat'); }
     };
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
@@ -355,9 +385,15 @@ async function join() {
     send = device.createSendTransport(await rpc('transport', { direction: 'send' })); bindTransport(send);
     recv = device.createRecvTransport(await rpc('transport', { direction: 'recv' })); bindTransport(recv);
     send.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => rpc('produce', { transportId: send.id, kind, rtpParameters, source: appData.source }).then(callback).catch(errback));
-    stream = $('synthetic').checked ? await syntheticStream() : await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 640, height: 360, frameRate: 30 } });
+    stream = $('synthetic').checked ? await syntheticStream() : await navigator.mediaDevices.getUserMedia({ audio: audioProcessing.constraints(), video: { width: 640, height: 360, frameRate: 30 } });
     render(stream.getVideoTracks()[0], 'local', true);
-    state.producers.push(await send.produce({ track: stream.getAudioTracks()[0], appData: { source: 'microphone' } }));
+    const captured = stream.getAudioTracks()[0];
+    const micTrack = await audioProcessing.start(captured, { isSynthetic: $('synthetic').checked });
+    replaceStreamAudio(captured, micTrack);
+    // stopTracks: false because the audio panel owns microphone tracks and swaps them with replaceTrack.
+    const micProducer = await send.produce({ track: micTrack, stopTracks: false, appData: { source: 'microphone' } });
+    state.producers.push(micProducer);
+    audioProcessing.attach(micProducer, (previous, current) => { replaceStreamAudio(previous, current); transcriptionControls.replaceMicrophone(current); });
     const mode = $('mode').value;
     const codec = device.rtpCapabilities.codecs.find(c => c.mimeType.toLowerCase() === (mode === 'vp9' ? 'video/vp9' : 'video/h264'));
     if (!codec) throw Error('Requested codec unsupported; no silent fallback');
@@ -399,6 +435,7 @@ function leave() {
   screenProducer?.close(); screenProducer = null;
   screenAudioProducer?.close(); screenAudioProducer = null;
   screenStream?.getTracks().forEach(t => t.stop()); screenStream = null;
+  audioProcessing.leave();
   $('screen').textContent = 'Share screen';
   $('screenSound').disabled = false; $('screenAudioStatus').textContent = '';
   clearInterval(timer); clearInterval(animation);
@@ -690,7 +727,13 @@ function penSegment(m) {
 $('username').value = params.get('username') || '';
 $('join').onclick = join; $('leave').onclick = () => returnHome(); $('home').onclick = () => returnHome();
 $('mic').onclick = () => toggle('audio', 'mic').catch(fail); $('camera').onclick = () => toggle('video', 'camera').catch(fail);
-$('chatForm').onsubmit = e => { e.preventDefault(); rpc('chat', { text: $('message').value }).catch(fail); $('message').value = ''; };
+$('chatTo').onchange = () => refreshChatRecipients();
+$('chatForm').onsubmit = e => {
+  e.preventDefault();
+  const to = $('chatTo').value, text = $('message').value;
+  if (to && !text.trim()) return;
+  (to ? rpc('privateChat', { to, text }) : rpc('chat', { text })).then(() => { $('message').value = ''; }).catch(fail);
+};
 $('export').onclick = () => {
   const url = URL.createObjectURL(new Blob([JSON.stringify(state.export(), null, 2)], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = `${state.metadata?.runId || 'telemetry'}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);

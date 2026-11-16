@@ -20,7 +20,7 @@ export function exportTranscript(segments, format) {
 }
 
 export function setupTranscription({ $, state, rpc, microphone, notice }) {
-  let current = { phase: 'idle', enabled: false }, segments = new Map(), ctx, source, capture, silent, generation = 0, starting = false;
+  let current = { phase: 'idle', enabled: false }, segments = new Map(), ctx, source, capture, silent, generation = 0, starting = false, captureTrack = null;
   const render = () => {
     const active = current.phase === 'recording', pending = current.phase === 'consent', finishing = current.phase === 'finishing', owner = state.room?.role === 'owner';
     $('transcriptionStatus').textContent = !current.enabled ? 'Transcription needs server setup.' : finishing ? 'Finishing the remaining speech…' : active ? 'Transcription active — Arabic / English' : pending ? 'Waiting for everyone to agree…' : 'Transcription stopped';
@@ -49,8 +49,8 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
       await prepare(); const context = ctx;
       await context.audioWorklet.addModule('/transcription-worklet.js');
       if (token !== generation || current.id !== id || !state.joined) return;
-      const track = microphone(); if (!track) throw Error('Microphone unavailable');
-      source = context.createMediaStreamSource(new MediaStream([track]));
+      captureTrack = microphone(); if (!captureTrack) throw Error('Microphone unavailable');
+      source = context.createMediaStreamSource(new MediaStream([captureTrack]));
       capture = new AudioWorkletNode(context, 'speech-capture');
       silent = context.createGain(); silent.gain.value = 0;
       source.connect(capture); capture.connect(silent); silent.connect(context.destination);
@@ -63,7 +63,7 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
         const { samples, startSample } = data;
         const offset = captureOffset + startSample / 16, sequence = seq++;
         const muted = state.producers.find(p => p.appData.source === 'microphone')?.paused;
-        if (muted || track.readyState !== 'live' || token !== generation) return;
+        if (muted || captureTrack?.readyState !== 'live' || token !== generation) return;
         rpc('transcriptionAudio', { id, seq: sequence, offset, language: $('transcriptionLanguage').value, wav: wavBase64(samples) }).catch(error => warning(error.message));
       };
     } catch (error) {
@@ -112,6 +112,12 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
       else rpc('transcriptionFlushed', { id }).catch(error => notice(error.message));
     },
     resetAudio() { capture?.port.postMessage('reset'); },
+    // The audio panel swapped the published microphone track: keep the same capture (and sequence) running on it.
+    replaceMicrophone(track) {
+      if (!capture || !ctx || !track) return;
+      source?.disconnect();
+      captureTrack = track; source = ctx.createMediaStreamSource(new MediaStream([track])); source.connect(capture);
+    },
     leave() { stopCapture(); current = { ...current, phase: 'idle' }; $('transcriptionQueue').textContent = ''; render(); },
   };
 }

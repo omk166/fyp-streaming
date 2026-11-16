@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audio test · FYP Streaming Lab</title>
+<style>
+body{font:16px system-ui;background:#101827;color:#edf4ff;margin:0;padding:24px 16px}main{max-width:1100px;margin:auto}h1{margin:0 0 6px}p,li{color:#b8c9df}a{color:#b5f1dd}
+button,select{font:inherit;padding:9px 12px;border-radius:6px;border:1px solid #70849c;margin:4px 4px 4px 0;cursor:pointer;background:#b5f1dd;color:#101827}button:disabled{opacity:.4;cursor:default}button.secondary{background:#28415f;color:#edf4ff}
+.panel{padding:16px;background:#1d2a3d;border-radius:10px;margin:16px 0}.panel h2{margin-top:0}.note{font-size:14px}.warn{color:#ffdd88}.error{color:#ffad9e}
+#script{font-size:20px;line-height:1.5;color:#edf4ff;background:#101827;border-radius:8px;padding:14px;border:2px solid #28415f}#script.reading{border-color:#b5f1dd}
+.takes{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.take{background:#101827;border-radius:8px;padding:12px;min-width:0}.take h3{margin:0 0 6px}
+.meter{height:10px;background:#28415f;border-radius:5px;overflow:hidden;margin:8px 0}.meter span{display:block;height:100%;width:0;background:#b5f1dd;transition:width .08s}
+.take audio{width:100%;margin-top:6px}.take canvas{width:100%;height:70px;background:#0b1220;border-radius:6px;margin-top:6px}.cue{font-weight:600;min-height:1.4em}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{border-bottom:1px solid #28415f;padding:8px;text-align:left;vertical-align:top}th{color:#edf4ff}td{color:#b8c9df}td.na{color:#ffdd88;font-style:italic}.table-wrap{overflow-x:auto}
+label{display:inline-block;margin-right:14px}fieldset{border:1px solid #70849c;border-radius:8px}
+</style></head><body><main>
+<p><a href="/">&larr; Home</a></p>
+<h1>Audio test: Off, Browser and Ours</h1>
+<p>Compare the three microphone processing modes on this computer. <strong>All audio stays in this browser.</strong> Nothing is uploaded unless you press the button in step 3, which says what it sends first.</p>
+<section class="panel" aria-labelledby="setupHeading"><h2 id="setupHeading">Setup</h2>
+<fieldset><legend>Switches used for Browser and Ours (same meaning as in the meeting)</legend><label><input type="checkbox" id="echoSwitch" checked> Echo cancellation</label><label><input type="checkbox" id="noiseSwitch" checked> Noise suppression</label></fieldset>
+<p class="note">Off always sends the unprocessed microphone. Ours = DTLN-aec 128 (echo) then DeepFilterNet3 (noise), running in this browser. Use the same microphone, position and volume for every mode.</p>
+<p id="capability" class="note" role="status"></p>
+<p id="status" role="status">Ready.</p><p id="error" class="error" role="alert"></p></section>
+
+<section class="panel" aria-labelledby="scriptHeading"><h2 id="scriptHeading">Script</h2>
+<p class="note">Each recording starts with 3 seconds of silence (to measure the room's noise), then read this aloud at a normal pace:</p>
+<p id="script"></p></section>
+
+<section class="panel" aria-labelledby="abHeading"><h2 id="abHeading">1 · A/B recording (and noise test)</h2>
+<p class="note">Record the script once per mode, then play the clips back side by side. For the noise test, either record in your own noisy room, or tick the box to play a noise clip through your speakers while you read (it is not part of any echo reference, so it is treated like room noise).</p>
+<label><input type="checkbox" id="noiseClip"> Play a noise clip through the speakers while recording</label><label>Noise level <select id="noiseLevel"><option value="-35">Quiet</option><option value="-28" selected>Medium</option><option value="-20">Loud</option></select></label>
+<div class="takes" id="takes"></div></section>
+
+<section class="panel" aria-labelledby="echoHeading"><h2 id="echoHeading">2 · Echo test</h2>
+<p class="warn"><strong>Use speakers, not headphones.</strong> The test plays a generated speech-like clip through your speakers as if it came from another participant (through a local WebRTC connection), while you stay completely silent. It records the microphone in each mode and reports how much of the echo remains. Keep the volume the same for all three runs (about 35 seconds in total).</p>
+<button id="echoRun">Run echo test (all three modes)</button><p id="echoStatus" role="status"></p></section>
+
+
+<section class="panel" aria-labelledby="recHeading"><h2 id="recHeading">3 · Recognition check (word error rate)</h2>
+<p id="werDisclosure">This sends the A/B recordings you made above to this meeting server's speech recognizer, the same path live transcription uses. The speech parts are cut into segments of at most 8 seconds (16 kHz mono WAV) and uploaded one by one; the server keeps them in memory only while recognising them and stores nothing. No other audio or data from this page is uploaded. Each transcript is compared with the script above.</p>
+<button id="werRun" disabled>Upload my recordings for the recognition check</button><p id="werStatus" role="status"></p></section>
+<section class="panel" aria-labelledby="werHeading"><h2 id="werHeading">4 · Results</h2>
+<p class="note">Only values measured on this computer are shown. Anything that could not be measured says why. Published model figures are deliberately not used here.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Measurement</th><th scope="col">Off (raw)</th><th scope="col">Browser (built-in)</th><th scope="col">Ours</th></tr></thead><tbody id="results"></tbody></table></div>
+<button id="exportResults" class="secondary">Download results (JSON)</button></section>
+<script type="module" src="/audio-test.js"></script></main></body></html>

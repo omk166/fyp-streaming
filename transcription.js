@@ -21,6 +21,11 @@ export function createTranscriber({ url = process.env.TRANSCRIPTION_URL, fetcher
   return run;
 }
 
+// Mono 16 kHz 16-bit PCM WAV of 0.1-8 s: what the browser capture sends and the speech worker accepts.
+export function isSpeechWav(wav) {
+  return Buffer.isBuffer(wav) && wav.length >= 3244 && wav.length <= 256044 && wav.toString('ascii', 0, 4) === 'RIFF' && wav.toString('ascii', 8, 12) === 'WAVE' && wav.readUInt32LE(24) === 16000 && wav.readUInt16LE(22) === 1 && wav.readUInt16LE(34) === 16;
+}
+
 export function createTranscription({ peers, publish, transcribe, now = Date.now }) {
   let history = [], jobs = new Set(), sequences = new Map(), finishing = null;
   const snapshot = () => ({ ...policy.snapshot(), ...(finishing ? { phase: 'finishing' } : {}), enabled: transcribe.enabled, segments: history });
@@ -79,7 +84,7 @@ export function createTranscription({ peers, publish, transcribe, now = Date.now
       if (data.language !== undefined && !['auto', 'en', 'ar'].includes(data.language)) throw Error('Choose Arabic and/or English');
       if (typeof data.wav !== 'string' || data.wav.length > 350000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data.wav)) throw Error('Invalid audio');
       const wav = Buffer.from(data.wav, 'base64');
-      if (wav.length < 3244 || wav.length > 256044 || wav.toString('ascii', 0, 4) !== 'RIFF' || wav.toString('ascii', 8, 12) !== 'WAVE' || wav.readUInt32LE(24) !== 16000 || wav.readUInt16LE(22) !== 1 || wav.readUInt16LE(34) !== 16) throw Error('Expected mono 16kHz PCM WAV');
+      if (!isSpeechWav(wav)) throw Error('Expected mono 16kHz PCM WAV');
       if (jobs.size >= 24) throw Error('Speech queue is full. Stop and wait for the processor to catch up.');
       sequences.set(peer.id, data.seq);
       const job = { peerId: peer.id, controller: new AbortController(), duration: (wav.length - 44) / 32 }; jobs.add(job); progress();

@@ -12,6 +12,8 @@ import { createRoomAccess } from './rooms.js';
 import { createRoomRecording } from './recording.js';
 import { createTranscription, createTranscriber } from './transcription.js';
 import { createWhiteboard } from './whiteboard.js';
+import { privateMessage } from './chat.js';
+import { createAudioTest } from './audio-test.js';
 const transcribe = createTranscriber();
 
 const host = process.env.HOST || '127.0.0.1';
@@ -76,6 +78,7 @@ app.get(['/', '/index.html', '/home'], auth.requireSession, (req, res) => {
   res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/home.html', import.meta.url)));
 });
 app.get('/meeting', auth.requireSession, (_req, res) => res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
+app.use(createAudioTest({ auth, transcribe }));
 app.use(express.static('public', { index: false }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = tls ? createHttpsServer(tls, app) : createServer(app);
@@ -240,6 +243,11 @@ async function action(peer, method, data) {
     case 'chat': {
       if (typeof data.text !== 'string' || data.text.length > 1000) throw Error('Invalid message');
       broadcast(room, null, 'chat', { text: data.text, username: peer.username, at: new Date().toISOString() }); return {};
+    }
+    case 'privateChat': {
+      // Delivered only to the sender (echo) and the recipient; never broadcast or stored.
+      const { recipient, payload } = privateMessage(room, peer, data);
+      emit(recipient, 'privateChat', payload); emit(peer, 'privateChat', payload); return {};
     }
     case 'stats': {
       const transports = [];
