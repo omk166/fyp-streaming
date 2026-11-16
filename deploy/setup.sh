@@ -39,6 +39,8 @@ chmod +x /etc/letsencrypt/renewal-hooks/deploy/fyp-streaming.sh
 cd "$APP_DIR"
 npm ci
 npm run build
+# Model files for the "Ours" audio mode; public/audio/ is not in git, so they must be fetched here.
+npm run audio:models
 
 # Service: runs on boot, restarts on crash, may bind 443 without root
 cat > /etc/systemd/system/fyp-streaming.service <<EOF

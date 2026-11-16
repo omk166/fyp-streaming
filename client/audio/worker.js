@@ -11,7 +11,11 @@ let models = null, dfModule = null, dfModel = null, engine = null, config = null
 
 async function fetchBytes(url, what, hint = 'Run "npm run audio:models" on the server') {
   let response;
-  try { response = await fetch(url, { cache: 'force-cache' }); } catch (error) { throw Error(`${what} could not be downloaded (${error.message})`); }
+  try {
+    response = await fetch(url, { cache: 'force-cache' });
+    // force-cache also returns a cached error, e.g. a 404 from before "npm run audio:models" ran; ask the server again.
+    if (!response.ok) response = await fetch(url, { cache: 'reload' });
+  } catch (error) { throw Error(`${what} could not be downloaded (${error.message})`); }
   if (!response.ok) throw Error(`${what} is missing on this server (${new URL(url, self.location.href).pathname}, HTTP ${response.status}). ${hint}`);
   return new Uint8Array(await response.arrayBuffer());
 }
