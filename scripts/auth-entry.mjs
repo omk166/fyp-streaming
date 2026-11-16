@@ -63,7 +63,7 @@ try {
   spoof.send(JSON.stringify({ id: 1, method: 'join', data: { room: testRoom.room.id, invitation: testRoom.invitation, username: 'Forged Host', role: 'host' } }));
   assert.equal((await reply).result.username, 'Account Alice');
   await new Promise(resolve => { spoof.once('close', resolve); spoof.close(); });
-  await page.locator('#logout').click();
+  await page.locator('#accountToggle').click(); await page.locator('#logout').click();
   await page.waitForURL('**/auth?**');
   await guest.waitForFunction(() => window.lab.consumers.size === 0);
   assert.equal((await context.request.get(base + '/api/auth/session')).status(), 401);

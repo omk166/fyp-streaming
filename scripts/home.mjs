@@ -33,12 +33,12 @@ try {
   await host.locator('#newMeeting').click(); await host.locator('#newMeetingName').fill('Design catch-up'); await host.locator('#createMeeting').click();
   await host.waitForURL('**/meeting?**'); await host.waitForFunction(() => !document.querySelector('#join').disabled);
   const invitation = await host.locator('#inviteLink').inputValue(); assert.ok(invitation.includes('#invite='));
-  await host.locator('#synthetic').check(); await host.locator('#join').click(); await host.waitForFunction(() => window.lab.joined);
+  await host.locator('#synthetic').evaluate(box => { box.checked = true; }); await host.locator('#join').click(); await host.waitForFunction(() => window.lab.joined);
   await guestContext.request.post(base + '/api/auth/guest', { headers: { Origin: base }, data: { name: 'Sam' } });
   const legacy = new URL(invitation); legacy.pathname = '/';
   await guest.goto(legacy.href); await guest.waitForURL('**/meeting?**');
   assert.equal(new URL(guest.url()).hash, new URL(invitation).hash);
-  await guest.locator('#synthetic').check(); await guest.locator('#join').click(); await guest.waitForFunction(() => window.lab.joined);
+  await guest.locator('#synthetic').evaluate(box => { box.checked = true; }); await guest.locator('#join').click(); await guest.waitForFunction(() => window.lab.joined);
   await host.evaluate(() => window.testMeetingSocket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ event: 'transcriptSegment', data: { id: 'test-caption', username: 'Alex', peerId: 'test', start: 0, end: 1000, text: 'Project notes are ready.' } }) })));
   await host.locator('#leave').click(); await host.waitForURL(base + '/'); await host.waitForFunction(() => document.querySelectorAll('#historyRows tr').length === 1);
   assert.equal(await guest.evaluate(() => window.lab.joined), true);
@@ -46,8 +46,8 @@ try {
   const downloading = host.waitForEvent('download'); await host.locator('#lastTxt').click();
   assert.match(await readFile(await (await downloading).path(), 'utf8'), /Project notes are ready/);
   await host.reload(); await host.getByRole('button', { name: 'Open meeting: Design catch-up' }).click();
-  await host.waitForURL('**/meeting?**'); await host.locator('#synthetic').check(); await host.locator('#join').click(); await host.waitForFunction(() => window.lab.joined);
-  host.once('dialog', dialog => dialog.accept()); await host.locator('#endRoom').click();
+  await host.waitForURL('**/meeting?**'); await host.locator('#synthetic').evaluate(box => { box.checked = true; }); await host.locator('#join').click(); await host.waitForFunction(() => window.lab.joined);
+  await host.locator('#controls [data-panel-open=people]').click(); await host.locator('#endRoom').click(); await host.locator('#confirmOk').click();
   for (const page of [host, guest]) { await page.waitForURL(base + '/'); await page.waitForFunction(() => document.querySelector('#historyRows').textContent.includes('Ended')); }
   assert.match(await guest.locator('#exitTitle').textContent(), /ended/);
   assert.equal(await guest.locator('#newMeeting').isDisabled(), true);
@@ -59,7 +59,7 @@ try {
   await guest.locator('#meetingName').fill('Weekly sync'); await guest.locator('#joinMeeting').click();
   await guest.locator('#feedback').waitFor({ state: 'visible' }); assert.match(await guest.locator('#feedback').textContent(), /invitation/i);
   await guest.locator('#invitationCode').fill(code); await guest.locator('#joinMeeting').click(); await guest.waitForURL('**/meeting?**');
-  await guest.locator('#synthetic').check(); await guest.locator('#join').click(); await guest.waitForFunction(() => window.lab.joined);
+  await guest.locator('#synthetic').evaluate(box => { box.checked = true; }); await guest.locator('#join').click(); await guest.waitForFunction(() => window.lab.joined);
   await guest.locator('#leave').click(); await guest.waitForURL(base + '/'); await guest.waitForFunction(() => document.querySelectorAll('#historyRows tr').length === 2);
   await host.reload(); await host.waitForFunction(() => document.querySelectorAll('#historyRows tr').length === 2);
   await host.locator('#historySearch').fill('Weekly'); assert.equal(await host.locator('#historyRows tr').count(), 1);

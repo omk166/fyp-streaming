@@ -4,6 +4,7 @@ import { setupRooms } from './rooms.js';
 import { setupRecording } from './recording-controls.js';
 import { setupTranscription } from './transcription.js';
 import { setupAudioProcessing } from './audio/controller.js';
+import { setupUI, setLabel, initials } from './ui.js';
 let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
 // Look in the pop-out window too: the toolbar and screen tile move there while it is open.
 const $ = id => document.getElementById(id) || pipWin?.document.getElementById(id);
@@ -18,8 +19,9 @@ let serial = 0;
 const pending = new Map(), seen = new Set();
 const entryUrl = () => `/auth?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
 let identity = null, signingOut = false;
-const roomControls = setupRooms({ $, identity: () => identity, joined: () => state.joined,
-  onChange: value => { state.room = value; }, onError: fail, onEnded: () => returnHome('ended') });
+const ui = setupUI({ $ });
+const roomControls = setupRooms({ $, identity: () => identity, joined: () => state.joined, confirm: ui.confirmDialog,
+  onChange: value => { state.room = value; ui.roomChanged(value); }, onError: fail, onEnded: () => returnHome('ended') });
 const recordingControls = setupRecording({ $, state, rpc, tiles: () => [...tiles.values()],
   audioTracks: () => [
     ...(stream?.getAudioTracks() || []).map(track => ({ track, peerId: state.peerId })),
@@ -46,7 +48,7 @@ async function loadIdentity() {
     $('username').value = identity.name;
     $('identity').textContent = `${identity.kind === 'guest' ? 'Guest' : 'Signed in'} · ${identity.name}`;
     $('logout').textContent = identity.kind === 'guest' ? 'Exit guest session' : 'Sign out';
-    $('logout').disabled = false;
+    $('logout').disabled = false; ui.identityChanged(identity);
     await roomControls.init();
   } catch (error) { fail(error); }
 }
@@ -78,14 +80,30 @@ function refreshParticipantUI() {
   }
   $('participants').replaceChildren();
   for (const peer of participants.values()) {
-    const item = document.createElement('li'); item.dataset.peerId = peer.peerId;
-    item.textContent = `${peer.username}${peer.kind === 'guest' ? ' (Guest)' : ''}${peer.role === 'owner' ? ' (Owner)' : ''}${peer.peerId === state.peerId ? ' (You)' : ''}${peer.micMuted ? ' \u{1F507} Mic muted' : ''}${peer.handRaised ? ' \u{270B} Hand raised' : ''}${peer.peerId === state.activeSpeaker ? ' · Speaking' : ''}`;
+    const item = document.createElement('li'); item.dataset.peerId = peer.peerId; item.dataset.initials = initials(peer.username);
+    // The pieces join into the same text as before ("Bob (Guest) (You)"), each in a span so it can be styled.
+    for (const [cls, text] of [['p-name', peer.username], ['p-tag', peer.kind === 'guest' ? ' (Guest)' : ''], ['p-tag p-owner', peer.role === 'owner' ? ' (Owner)' : ''],
+      ['p-tag', peer.peerId === state.peerId ? ' (You)' : ''], ['p-state', peer.micMuted ? ' \u{1F507} Mic muted' : ''], ['p-state', peer.handRaised ? ' \u{270B} Hand raised' : ''],
+      ['p-speaking', peer.peerId === state.activeSpeaker ? ' · Speaking' : '']]) {
+      if (!text) continue;
+      const span = document.createElement('span'); span.className = cls; span.textContent = text; item.append(span);
+    }
     $('participants').append(item);
   }
   refreshChatRecipients();
   const raised = participants.get(state.peerId)?.handRaised || false;
-  $('hand').textContent = raised ? 'Lower hand' : 'Raise hand';
+  setLabel($('hand'), raised ? 'Lower hand' : 'Raise hand');
   $('hand').setAttribute('aria-pressed', String(raised));
+  ui.setAlone(state.joined && participants.size <= 1);
+}
+function addChat(data) {
+  const item = document.createElement('div'), who = document.createElement('span'), sep = document.createElement('span'), text = document.createElement('span');
+  item.className = `msg${data.peerId && data.peerId === state.peerId ? ' mine' : ''}${data.private ? ' private' : ''}`;
+  who.className = 'who'; who.textContent = data.username || 'Guest';
+  who.dataset.time = new Date(data.at || Date.now()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  sep.className = 'sep'; sep.textContent = ': ';
+  text.className = 'text'; text.dir = 'auto'; text.textContent = data.text;
+  item.append(who, sep, text, document.createTextNode('\n')); $('chat').append(item); $('chat').scrollTop = $('chat').scrollHeight;
 }
 // Private chat: the recipient list mirrors the participant list; a recipient who leaves falls back to Everyone.
 function refreshChatRecipients() {
@@ -97,7 +115,7 @@ function refreshChatRecipients() {
 }
 function showPrivateChat({ from, to, text }) {
   const mine = from.peerId === state.peerId;
-  $('chat').textContent += `[Private] ${mine ? `You → ${to.username}` : `${from.username} → you`}: ${text}\n`;
+  addChat({ username: `[Private] ${mine ? `You → ${to.username}` : `${from.username} → you`}`, text, peerId: from.peerId, private: true });
   if (!mine) $('chatNotice').textContent = `New private message from ${from.username}.`;
   event('privateChat', { incoming: !mine });
 }
@@ -141,7 +159,7 @@ function updatePin() {
     tile.querySelector('button').textContent = id === pinned ? 'Unpin' : 'Pin';
     tile.querySelector('button').setAttribute('aria-pressed', String(id === pinned));
   }
-  $('viewMode').textContent = viewMode === 'gallery' ? 'Speaker view' : 'Gallery view';
+  setLabel($('viewMode'), viewMode === 'gallery' ? 'Speaker view' : 'Gallery view');
 }
 // Wait a moment before moving the stage to a new speaker, so short sounds do not make the view jump around.
 function speakerChanged(peerId) {
@@ -190,7 +208,7 @@ async function stopScreen() {
   removeTrack('screen-local');
   for (const producer of closing) producer.close();
   state.producers = state.producers.filter(p => !closing.includes(p));
-  $('screen').textContent = 'Share screen'; $('wbBar').hidden = true; setDrawing(false); pipWin?.close(); penStop();
+  setLabel($('screen'), 'Share screen'); $('screen').classList.remove('active'); $('wbBar').hidden = true; setDrawing(false); pipWin?.close(); penStop();
   $('screenSound').disabled = false; $('screenAudioStatus').textContent = '';
   for (const producer of closing) if (state.joined) await rpc('closeProducer', { id: producer.id });
 }
@@ -230,7 +248,7 @@ async function shareScreen() {
     $('screenAudioStatus').textContent = sound ? 'Screen sound is shared. Microphone mute controls your microphone only.' : soundRequested ? 'Video only: no sound was provided by the browser. For tab audio, choose a tab and enable Share tab audio.' : 'Screen sound is off for this share.';
     track.onended = () => stopScreen().catch(fail);
     render(track, 'screen-local', true, { source: 'screen' });
-    $('screen').textContent = 'Stop sharing'; $('wbBar').hidden = false;
+    setLabel($('screen'), 'Stop sharing'); $('screen').classList.add('active'); $('wbBar').hidden = false;
     $('status').textContent = 'Sharing. Drawing tools are on the right; \u29C9 pops them out with a live preview so you can draw while on other pages or apps.';
     penStart();
     if (track.readyState === 'ended') await stopScreen();
@@ -314,7 +332,7 @@ async function join() {
   const started = performance.now();
   let receivedRecording = null, receivedTranscription = null;
   try {
-    state.metadata = { runId: params.get('run') || crypto.randomUUID(), mode: $('mode').value, synthetic: $('synthetic').checked, syntheticClock: $('synthetic').checked ? 'timer' : null, userAgent: navigator.userAgent, startedAt: new Date().toISOString(), origin: location.origin };
+    state.metadata = { preferredLanguage: ui.preferredLanguage(), runId: params.get('run') || crypto.randomUUID(), mode: $('mode').value, synthetic: $('synthetic').checked, syntheticClock: $('synthetic').checked ? 'timer' : null, userAgent: navigator.userAgent, startedAt: new Date().toISOString(), origin: location.origin };
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
     ws.onmessage = async ({ data }) => {
       const message = JSON.parse(data);
@@ -365,7 +383,7 @@ async function join() {
         showReaction(message.data);
       } else if (message.event === 'privateChat') {
         showPrivateChat(message.data);
-      } else if (message.event === 'chat') { $('chat').textContent += `${message.data.username || 'Guest'}: ${message.data.text}\n`; event('chat'); }
+      } else if (message.event === 'chat') { addChat(message.data); event('chat'); }
     };
     await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
     ws.onclose = async ({ code }) => {
@@ -384,21 +402,27 @@ async function join() {
     device = new Device(); await device.load(info);
     send = device.createSendTransport(await rpc('transport', { direction: 'send' })); bindTransport(send);
     recv = device.createRecvTransport(await rpc('transport', { direction: 'recv' })); bindTransport(recv);
-    send.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => rpc('produce', { transportId: send.id, kind, rtpParameters, source: appData.source }).then(callback).catch(errback));
+    send.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => rpc('produce', { transportId: send.id, kind, rtpParameters, source: appData.source, paused: appData.initiallyPaused === true }).then(callback).catch(errback));
     stream = $('synthetic').checked ? await syntheticStream() : await navigator.mediaDevices.getUserMedia({ audio: audioProcessing.constraints(), video: { width: 640, height: 360, frameRate: 30 } });
     render(stream.getVideoTracks()[0], 'local', true);
     const captured = stream.getAudioTracks()[0];
     const micTrack = await audioProcessing.start(captured, { isSynthetic: $('synthetic').checked });
+    const joinMuted = ui.joinMuted(), joinCameraOff = ui.joinCameraOff();
+    micTrack.enabled = !joinMuted;
+    stream.getVideoTracks()[0].enabled = !joinCameraOff;
     replaceStreamAudio(captured, micTrack);
     // stopTracks: false because the audio panel owns microphone tracks and swaps them with replaceTrack.
-    const micProducer = await send.produce({ track: micTrack, stopTracks: false, appData: { source: 'microphone' } });
+    const micProducer = await send.produce({ track: micTrack, stopTracks: false, appData: { source: 'microphone', initiallyPaused: joinMuted } });
+    if (joinMuted) micProducer.pause();
     state.producers.push(micProducer);
     audioProcessing.attach(micProducer, (previous, current) => { replaceStreamAudio(previous, current); transcriptionControls.replaceMicrophone(current); });
     const mode = $('mode').value;
     const codec = device.rtpCapabilities.codecs.find(c => c.mimeType.toLowerCase() === (mode === 'vp9' ? 'video/vp9' : 'video/h264'));
     if (!codec) throw Error('Requested codec unsupported; no silent fallback');
     const encodings = mode === 'simulcast' ? [{ scaleResolutionDownBy: 2, maxBitrate: 150000 }, { scaleResolutionDownBy: 1, maxBitrate: 550000 }] : mode === 'vp9' ? [{ scalabilityMode: 'L2T3', maxBitrate: 700000 }] : [{ maxBitrate: 700000 }];
-    state.producers.push(await send.produce({ track: stream.getVideoTracks()[0], codec, encodings, appData: { source: 'camera' } }));
+    const cameraProducer = await send.produce({ track: stream.getVideoTracks()[0], codec, encodings, appData: { source: 'camera', initiallyPaused: joinCameraOff } });
+    if (joinCameraOff) cameraProducer.pause();
+    state.producers.push(cameraProducer); setVideoPaused('local', joinCameraOff);
     state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; whiteboard.refresh(); state.joinMs = performance.now() - started;
@@ -409,7 +433,10 @@ async function join() {
     for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = false;
 
     for (const id of ['room','mode','synthetic','username']) $(id).disabled = true;
-    $('status').textContent = `Joined ${$('room').value}. ${state.metadata.synthetic ? 'Synthetic' : 'Camera/microphone'} media. Telemetry active.`;
+    ui.setPhase('call'); refreshParticipantUI();
+    setLabel($('mic'), joinMuted ? 'Unmute microphone' : 'Mute microphone'); $('mic').classList.toggle('off', joinMuted);
+    setLabel($('camera'), joinCameraOff ? 'Resume camera' : 'Pause camera'); $('camera').classList.toggle('off', joinCameraOff);
+    $('status').textContent = params.has('debug') ? `Joined ${$('room').value}. ${state.metadata.synthetic ? 'Synthetic' : 'Camera/microphone'} media. Telemetry active.` : `You joined ${$('room').value}.`;
     timer = setInterval(sample, 1000); await sample();
   } catch (error) { fail(error); leave(); }
 }
@@ -436,7 +463,7 @@ function leave() {
   screenAudioProducer?.close(); screenAudioProducer = null;
   screenStream?.getTracks().forEach(t => t.stop()); screenStream = null;
   audioProcessing.leave();
-  $('screen').textContent = 'Share screen';
+  setLabel($('screen'), 'Share screen'); $('screen').classList.remove('active');
   $('screenSound').disabled = false; $('screenAudioStatus').textContent = '';
   clearInterval(timer); clearInterval(animation);
   for (const p of pending.values()) p.reject(Error('Left room')); pending.clear();
@@ -450,7 +477,8 @@ function leave() {
   $('wbBar').hidden = true; pipWin?.close(); penStop(); clearTimeout(wbTimer); setDrawing(false); overlays.clear(); annotations.clear(); frozen.clear();
   for (const id of ['join','room','mode','synthetic','username']) $(id).disabled = false;
   roomControls.refresh();
-  $('mic').textContent = 'Mute microphone'; $('camera').textContent = 'Pause camera';
+  setLabel($('mic'), 'Mute microphone'); setLabel($('camera'), 'Pause camera');
+  $('mic').classList.remove('off'); $('camera').classList.remove('off'); ui.setPhase('lobby');
   event('left');
   return recordingFinished;
 }
@@ -463,7 +491,8 @@ async function toggle(kind, id) {
   if (kind === 'audio') transcriptionControls.resetAudio();
   if (kind === 'video') setVideoPaused('local', paused);
   event('toggle', { kind, paused });
-  $(id).textContent = kind === 'audio' ? (paused ? 'Unmute microphone' : 'Mute microphone') : (paused ? 'Resume camera' : 'Pause camera');
+  setLabel($(id), kind === 'audio' ? (paused ? 'Unmute microphone' : 'Mute microphone') : (paused ? 'Resume camera' : 'Pause camera'));
+  $(id).classList.toggle('off', paused);
 }
 state.export = () => ({ metadata: state.metadata, joinMs: state.joinMs, events: state.events, samples: state.samples, errors: state.errors });
 $('screen').onclick = shareScreen;
@@ -645,7 +674,7 @@ async function popOut() {
   const video = tile.querySelector('video'), bar = $('wbBar'), relayout = () => layoutOverlay(state.peerId);
   try {
     const win = pipWin = await documentPictureInPicture.requestWindow({ width: 760, height: 460 });
-    for (const style of document.querySelectorAll('style')) win.document.head.append(style.cloneNode(true));
+    for (const style of document.querySelectorAll('style, link[rel=stylesheet]')) win.document.head.append(style.cloneNode(true));
     const extra = win.document.createElement('style'); extra.textContent = PIP_CSS; win.document.head.append(extra);
     win.document.title = 'Draw on your shared screen';
     win.document.body.className = 'pip-body'; win.document.body.classList.toggle('drawing', drawOn);
@@ -725,7 +754,7 @@ function penSegment(m) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ method: 'wbSegment', data }));
 }
 $('username').value = params.get('username') || '';
-$('join').onclick = join; $('leave').onclick = () => returnHome(); $('home').onclick = () => returnHome();
+$('join').onclick = () => { ui.stopPreview(); join(); }; $('leave').onclick = () => returnHome(); $('home').onclick = () => returnHome();
 $('mic').onclick = () => toggle('audio', 'mic').catch(fail); $('camera').onclick = () => toggle('video', 'camera').catch(fail);
 $('chatTo').onchange = () => refreshChatRecipients();
 $('chatForm').onsubmit = e => {

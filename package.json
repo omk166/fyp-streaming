@@ -18,6 +18,7 @@
     "test:rooms": "node --test tests/rooms.test.mjs",
     "test:room-ui": "node scripts/protected-rooms.mjs",
     "test:home": "node scripts/home.mjs",
+    "test:ui": "node scripts/ui-redesign.mjs",
     "test:speaker": "node scripts/active-speaker.mjs",
     "test:screen-audio": "node scripts/screen-audio.mjs",
     "test:recording-policy": "node --test tests/recording.test.mjs",

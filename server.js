@@ -184,8 +184,10 @@ async function action(peer, method, data) {
       const source = data.source || (data.kind === 'audio' ? 'microphone' : 'camera');
       if (!['microphone','camera','screen','screenAudio'].includes(source) || (['microphone','screenAudio'].includes(source) ? data.kind !== 'audio' : data.kind !== 'video') || [...peer.producers.values()].some(p => p.appData.source === source)) throw Error('Invalid media source');
       if (source === 'screenAudio' && ![...peer.producers.values()].some(p => p.appData.source === 'screen')) throw Error('Share a screen before publishing its sound');
-      const producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters, appData: { source, peerId: peer.id, username: peer.username } });
+      if (data.paused !== undefined && typeof data.paused !== 'boolean') throw Error('Invalid initial pause state');
+      const producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters, paused: data.paused === true, appData: { source, peerId: peer.id, username: peer.username } });
       peer.producers.set(producer.id, producer);
+      if (source === 'microphone') { peer.micMuted = producer.paused; broadcast(room, null, 'participant', participant(peer)); }
       if (source === 'microphone') await room.audioLevels.addProducer({ producerId: producer.id });
       broadcast(room, peer, 'producer', { producerId: producer.id });
       return { id: producer.id };
@@ -242,7 +244,7 @@ async function action(peer, method, data) {
     }
     case 'chat': {
       if (typeof data.text !== 'string' || data.text.length > 1000) throw Error('Invalid message');
-      broadcast(room, null, 'chat', { text: data.text, username: peer.username, at: new Date().toISOString() }); return {};
+      broadcast(room, null, 'chat', { text: data.text, username: peer.username, peerId: peer.id, at: new Date().toISOString() }); return {};
     }
     case 'privateChat': {
       // Delivered only to the sender (echo) and the recipient; never broadcast or stored.

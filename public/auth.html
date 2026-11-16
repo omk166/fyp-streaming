@@ -9,9 +9,9 @@
 </head>
 <body>
   <main>
-    <a class="brand" href="/auth" aria-label="FYP Streaming Lab home"><span class="brand-mark" aria-hidden="true">↗</span> FYP Streaming Lab</a>
     <section class="card" aria-labelledby="title">
-      <div class="intro"><span class="eyebrow">LET’S CONNECT</span><h1 id="title">Join a conversation.</h1><p>Use your account or drop in as a guest.</p><p id="roomHint" class="room-hint" hidden></p></div>
+      <a class="brand" href="/auth" aria-label="FYP Streaming Lab home"><span class="brand-mark"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg></span> FYP Streaming Lab</a>
+      <div class="intro"><h1 id="title">Join a conversation.</h1><p>Sign in to start or join a meeting.</p><p id="roomHint" class="room-hint" hidden></p></div>
       <div id="existing" class="existing" hidden><p id="existingName"></p><button id="continue" class="secondary" type="button">Continue to meeting</button></div>
       <button id="google" class="google" type="button" disabled><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><path fill="#4285f4" d="M21.8 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.5a4.7 4.7 0 0 1-2 3.1v2.6h3.4c2-1.8 2.9-4.4 2.9-7.6Z"/><path fill="#34a853" d="M12 22c2.7 0 5-.9 6.9-2.5l-3.4-2.6a6.2 6.2 0 0 1-9.3-3.3H2.7v2.7A10 10 0 0 0 12 22Z"/><path fill="#fbbc05" d="M6.2 13.6a6 6 0 0 1 0-3.2V7.7H2.7a10 10 0 0 0 0 8.6l3.5-2.7Z"/><path fill="#ea4335" d="M12 6c1.5 0 2.8.5 3.9 1.5l2.9-2.8A9.7 9.7 0 0 0 12 2a10 10 0 0 0-9.3 5.7l3.5 2.7A6 6 0 0 1 12 6Z"/></svg>Continue with Google</button>
       <p id="googleNote" class="note" hidden>Google sign-in is not available yet. You can use email or join as a guest.</p>
@@ -24,7 +24,7 @@
       <div id="loginPanel" role="tabpanel" aria-labelledby="loginTab">
         <form id="loginForm">
           <label for="loginEmail">Email</label><input id="loginEmail" name="email" type="email" autocomplete="username" required maxlength="254" placeholder="you@example.com">
-          <label for="loginPassword">Password</label><div class="password"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="128"><button type="button" data-password="loginPassword" aria-label="Show password" aria-pressed="false">Show</button></div>
+          <label for="loginPassword">Password</label><div class="password"><input id="loginPassword" name="password" type="password" autocomplete="current-password" required maxlength="128"><button type="button" data-password="loginPassword" aria-label="Show password" aria-pressed="false"><svg class="eye" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.4 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.6 8 10 8a9.7 9.7 0 0 0 5.4-1.6M2 2l20 20M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
           <button class="primary" type="submit">Log in</button>
         </form>
       </div>
@@ -32,7 +32,7 @@
         <form id="signupForm">
           <label for="signupName">Your name</label><input id="signupName" name="name" autocomplete="name" required maxlength="40" placeholder="How you’ll appear in the meeting">
           <label for="signupEmail">Email</label><input id="signupEmail" name="email" type="email" autocomplete="username" required maxlength="254" placeholder="you@example.com">
-          <label for="signupPassword">Password</label><div class="password"><input id="signupPassword" name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="passwordHint"><button type="button" data-password="signupPassword" aria-label="Show password" aria-pressed="false">Show</button></div>
+          <label for="signupPassword">Password</label><div class="password"><input id="signupPassword" name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="passwordHint"><button type="button" data-password="signupPassword" aria-label="Show password" aria-pressed="false"><svg class="eye" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.4 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.6 8 10 8a9.7 9.7 0 0 0 5.4-1.6M2 2l20 20M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button></div>
           <p id="passwordHint" class="note">Use at least 12 characters. A few memorable words work well.</p>
           <button class="primary" type="submit">Create account</button>
         </form>
@@ -46,7 +46,7 @@
       </div>
       <p id="feedback" role="alert" tabindex="-1" hidden></p>
     </section>
-    <p class="footnote">Your camera and microphone stay off until you join the room.</p>
+    <p class="footnote"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>Your camera and microphone stay off until you join the room.</p>
   </main>
 </body>
 </html>

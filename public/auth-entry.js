@@ -39,7 +39,7 @@ for (const tab of tabs) {
 }
 for (const button of document.querySelectorAll('[data-password]')) button.onclick = () => {
   const input = $(button.dataset.password), show = input.type === 'password';
-  input.type = show ? 'text' : 'password'; button.textContent = show ? 'Hide' : 'Show';
+  input.type = show ? 'text' : 'password';
   button.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); button.setAttribute('aria-pressed', String(show));
 };
 for (const method of ['login', 'signup', 'guest']) $(`${method}Form`).onsubmit = async event => {

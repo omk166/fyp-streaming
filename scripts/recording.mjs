@@ -41,7 +41,7 @@ try {
   for (const page of pages) await page.waitForFunction(() => window.lab.consumers.size === 4);
   assert.equal(await alice.locator('#recordRequest').isVisible(), false);
   assert.match((await alice.evaluate(() => window.testRpc('recordingRequest'))).error, /owner/);
-  await host.locator('#recordRequest').click();
+  await host.locator('#moreToggle').click(); await host.locator('#recordRequest').click();
   for (const page of pages) await page.waitForFunction(() => window.lab.recording?.phase === 'consent');
   assert.equal(await host.evaluate(() => window.lab.recorderRunning), false);
   const id = await host.evaluate(() => window.lab.recording.id);
@@ -51,7 +51,7 @@ try {
   await host.waitForFunction(() => window.lab.recording.phase === 'idle');
   assert.equal(await host.evaluate(() => Boolean(window.lab.lastRecording)), false);
   async function start(consenting = [alice, bob]) {
-    await host.locator('#recordRequest').click();
+    await host.locator('#moreToggle').click(); await host.locator('#recordRequest').click();
     await host.waitForFunction(() => window.lab.recording.phase === 'consent');
     for (const page of consenting) await page.locator('#recordAllow').click();
     await host.waitForFunction(() => window.lab.recorderRunning);
@@ -59,7 +59,7 @@ try {
     const samples = await host.evaluate(() => window.lab.samples.length);
     await host.waitForFunction(n => window.lab.samples.length >= n + 2, samples);
   }
-  await host.locator('#recordRequest').click();
+  await host.locator('#moreToggle').click(); await host.locator('#recordRequest').click();
   await alice.locator('#recordAllow').click();
   assert.equal(await host.evaluate(() => window.lab.recorderRunning), false);
   await bob.locator('#recordAllow').click(); await host.waitForFunction(() => window.lab.recorderRunning);
@@ -67,7 +67,7 @@ try {
   await host.locator('#screen').click();
   await alice.waitForFunction(() => [...window.lab.consumers.values()].some(c => c.appData.source === 'screenAudio'));
   await host.waitForFunction(n => window.lab.samples.length >= n + 3, sampleCount);
-  const firstDownload = host.waitForEvent('download'); await host.locator('#recordStop').click();
+  const firstDownload = host.waitForEvent('download'); await host.locator('#moreToggle').click(); await host.locator('#recordStop').click();
   const file = await firstDownload;
   await mkdir('artifacts/private', { recursive: true }); await file.saveAs('artifacts/private/meeting-recording.webm');
   assert.equal(await file.failure(), null);
@@ -82,7 +82,7 @@ try {
   await host.locator('#screen').click();
   await start();
   await host.waitForFunction(() => window.lab.samples.length > 5);
-  const withdrawn = host.waitForEvent('download'); await alice.locator('#recordWithdraw').click(); await withdrawn;
+  const withdrawn = host.waitForEvent('download'); await alice.locator('#moreToggle').click(); await alice.locator('#recordWithdraw').click(); await withdrawn;
   await host.waitForFunction(() => window.lab.recording.phase === 'idle' && !window.lab.recorderRunning);
   await start();
   const newArrivalDownload = host.waitForEvent('download');
@@ -102,7 +102,7 @@ try {
     window.originalRecorder = MediaRecorder;
     window.MediaRecorder = class extends MediaRecorder { constructor() { throw Error('Injected recorder failure'); } };
   });
-  await host.locator('#recordRequest').click();
+  await host.locator('#moreToggle').click(); await host.locator('#recordRequest').click();
   for (const page of [alice, bob, late]) await page.locator('#recordAllow').click();
   await host.waitForFunction(() => window.lab.recording.phase === 'idle');
   assert.equal(await host.evaluate(() => window.lab.joined && !window.lab.recorderRunning), true);
@@ -112,7 +112,7 @@ try {
   await host.locator('#inviteLink').evaluate(el => { el.value = '[private invitation]'; });
   await host.screenshot({ path: 'artifacts/private/recording-controls.png', fullPage: true });
   await start([alice, bob, late]);
-  const logoutFile = host.waitForEvent('download'); await host.locator('#logout').click(); await logoutFile;
+  const logoutFile = host.waitForEvent('download'); await host.locator('#accountToggle').click(); await host.locator('#logout').click(); await logoutFile;
   await host.waitForURL('**/auth?**');
   for (const page of [alice, bob, late]) { await page.waitForFunction(() => window.lab.recording.phase === 'idle' && window.lab.joined); await page.locator('#leave').click(); }
   assert.deepEqual(errors, []);

@@ -10,7 +10,7 @@ import { createWhiteboard } from '../whiteboard.js';
 
 const markup = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const styles = markup.match(/<style>([\s\S]*?)<\/style>/)[1];
-const panel = markup.slice(markup.indexOf('<section id="boardPanel"'), markup.indexOf('<section class="panel" aria-label="Meeting recording">'));
+const panel = markup.slice(markup.indexOf('<section id="boardPanel"'), markup.indexOf('<!-- end whiteboard -->'));
 const client = await readFile(new URL('../client/whiteboard.js', import.meta.url), 'utf8');
 const html = `<!doctype html><style>${styles}</style><main><button id="boardToggle">Whiteboard</button>${panel}</main>
 <script type="module">

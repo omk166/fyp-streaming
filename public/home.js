@@ -24,7 +24,7 @@ function render() {
   $('emptyHistory').querySelector('p').textContent = meetings.length ? 'Try a different name or filter.' : 'Meetings you create or join will appear here.';
   for (const room of selected) {
     const row = document.createElement('tr'), nameCell = document.createElement('td'), meeting = document.createElement('div'); meeting.className = 'meeting-cell';
-    const symbol = document.createElement('span'); symbol.className = 'meeting-symbol'; symbol.ariaHidden = 'true'; symbol.textContent = '↗';
+    const symbol = document.createElement('span'); symbol.className = 'meeting-symbol'; symbol.ariaHidden = 'true'; symbol.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>';
     const text = document.createElement('div'), title = document.createElement('strong'), role = document.createElement('small'); title.textContent = room.name; title.dir = 'auto'; role.textContent = room.role === 'owner' ? 'You hosted this meeting' : 'You joined this meeting'; text.append(title, role); meeting.append(symbol, text); nameCell.append(meeting);
     const activity = document.createElement('td'); activity.className = 'activity'; const at = room.lastJoinedAt || room.createdAt; activity.append(document.createTextNode(date(at))); const detail = document.createElement('small'); detail.textContent = `${time(at)} · ${room.lastJoinedAt ? 'Last joined' : 'Created'}`; activity.append(detail);
     const stateCell = document.createElement('td'), badge = document.createElement('span'), state = status(room); badge.textContent = state; badge.className = 'badge' + (['Ended', 'Expired'].includes(state) ? ' past' : state === 'Locked' ? ' locked' : ''); stateCell.append(badge);
@@ -89,7 +89,7 @@ async function init() {
     identity = await api('/api/auth/session');
     $('profileName').textContent = identity.name; $('profileKind').textContent = identity.kind === 'guest' ? 'Guest session' : 'Personal workspace';
     $('avatar').textContent = identity.name.trim().split(/\s+/).slice(0, 2).map(word => [...word][0]).join('').toLocaleUpperCase();
-    $('greeting').textContent = `WELCOME${identity.kind === 'guest' ? '' : ' BACK'}, ${identity.name.toLocaleUpperCase()}`;
+    $('greeting').textContent = `Welcome${identity.kind === 'guest' ? '' : ' back'}, ${identity.name.trim().split(/\s+/)[0]}`;
     $('today').dateTime = new Date().toISOString().slice(0, 10); $('today').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date());
     $('logout').disabled = $('joinMeeting').disabled = false; $('newMeeting').disabled = identity.kind !== 'account'; $('hostSignIn').hidden = identity.kind === 'account';
     $('historyNote').textContent = identity.kind === 'guest' ? 'History is available for this guest session. Sign in to keep your meeting history across sessions.' : 'Your latest 100 meetings. History is private to your account.';

@@ -66,6 +66,7 @@ try {
   await charlie.locator('#leave').click(); await charlie.waitForURL(base + '/'); await charlie.goto(charlieRoomUrl); await charlie.locator('#join').click();
   await charlie.waitForFunction(() => window.lab.joined && [...document.querySelectorAll('.tile')].some(t => t.textContent.includes('Bob') && t.textContent.includes('Mic muted') && t.textContent.includes('Hand raised')));
   for (const id of ['react-like', 'react-heart', 'react-laugh']) {
+    await alice.locator('#reactToggle').click(); // reactions live in a popover in the control bar
     await alice.locator(`#${id}`).click();
     for (const page of pages) await page.waitForFunction(() => [...document.querySelectorAll('#reactions .reaction')].some(t => t.textContent.includes('Alice')));
     for (const page of pages) await page.waitForFunction(() => document.querySelector('#reactions').children.length === 0);

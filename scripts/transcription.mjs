@@ -39,7 +39,7 @@ try {
     await page.goto(`${base}/?synthetic=1&${room.query}${room.fragment}`);
     await page.locator('#join').click(); await page.waitForFunction(() => window.lab.joined);
   }
-  await hostPage.locator('#transcriptionStart').click();
+  await hostPage.locator('#controls [data-panel-open=captions]').click(); await hostPage.locator('#transcriptionStart').click();
   await guestPage.locator('#transcriptionConsent').waitFor({ state: 'visible' });
   assert.equal(requests, 0);
   await guestPage.locator('#transcriptionDecline').click();
@@ -51,7 +51,7 @@ try {
   assert.ok(requests > 0);
   const downloading = hostPage.waitForEvent('download'); await hostPage.locator('#transcript-txt').click();
   const download = await downloading; assert.match(await readFile(await download.path(), 'utf8'), /مرحبا hello/);
-  await guestPage.locator('#transcriptionWithdraw').click();
+  await guestPage.locator('#controls [data-panel-open=captions]').click(); await guestPage.locator('#transcriptionWithdraw').click();
   await hostPage.waitForFunction(() => document.querySelector('#transcriptionStatus').textContent.includes('stopped'));
   const stopped = requests;
   await hostPage.waitForTimeout(4500); assert.equal(requests, stopped);

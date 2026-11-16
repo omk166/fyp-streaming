@@ -13,7 +13,7 @@ try {
   for (const context of [guest, late]) assert.equal((await context.request.post(base + '/api/auth/guest', { headers, data: { name: 'Invited guest' } })).status(), 201);
   const hostPage = await owner.newPage(), guestPage = await guest.newPage();
   for (const page of [hostPage, guestPage]) page.on('pageerror', error => errors.push(error.message));
-  await hostPage.goto(base + '/meeting?synthetic=1');
+  await hostPage.goto(base + '/meeting?synthetic=1&debug=1'); // the create-room form is a research tool now
   await hostPage.locator('#newRoomName').fill('Private team room'); await hostPage.locator('#createRoom').click();
   await hostPage.waitForFunction(() => !document.querySelector('#inviteLink').hidden && document.querySelector('#inviteLink').value.includes('#invite='));
   const link = await hostPage.locator('#inviteLink').inputValue(), url = new URL(link), roomId = url.searchParams.get('room'), invitation = new URLSearchParams(url.hash.slice(1)).get('invite');
@@ -36,6 +36,7 @@ try {
   const spoof = await socketJoin({ room: roomId, invitation, role: 'owner', username: 'Forged owner' });
   assert.equal(spoof.result.username, 'Invited guest');
   assert.equal(spoof.result.room.role, 'participant');
+  await hostPage.locator('#controls [data-panel-open=people]').click(); // host tools sit in the People panel during a call
   await hostPage.locator('#lockRoom').click();
   await hostPage.waitForFunction(() => document.querySelector('#lockRoom').textContent === 'Unlock room');
   assert.equal((await late.request.post(base + '/api/rooms/resolve', { headers, data: { roomId, invitation } })).status(), 403);
@@ -57,7 +58,7 @@ try {
   // Do not publish the live invitation token in screenshots.
   await hostPage.locator('#inviteLink').evaluate(el => { el.value = '[private invitation]'; });
   await hostPage.screenshot({ path: 'artifacts/private/protected-room.png', fullPage: true });
-  hostPage.once('dialog', dialog => dialog.accept()); await hostPage.locator('#endRoom').click();
+  await hostPage.locator('#controls [data-panel-open=people]').click(); await hostPage.locator('#endRoom').click(); await hostPage.locator('#confirmOk').click();
   for (const page of [hostPage, guestPage, latePage]) { await page.waitForURL(base + '/'); await page.waitForFunction(() => document.querySelector('#historyRows').textContent.includes('Ended')); }
   assert.equal((await owner.request.post(base + '/api/rooms/resolve', { headers, data: { roomId } })).status(), 403);
   assert.deepEqual(errors, []);

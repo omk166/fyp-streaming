@@ -48,12 +48,12 @@ try {
   await sharer.evaluate(() => { const sound = window.testDisplay.getAudioTracks()[0]; sound.stop(); sound.dispatchEvent(new Event('ended')); });
   await listener.waitForFunction(() => ![...window.lab.consumers.values()].some(c => c.appData.source === 'screenAudio') && [...window.lab.consumers.values()].some(c => c.appData.source === 'screen'));
   await sharer.locator('#screen').click();
-  await sharer.locator('#screenSound').uncheck();
+  await sharer.locator('#moreToggle').click(); await sharer.locator('#screenSound').uncheck(); await sharer.locator('#moreToggle').click();
   await sharer.locator('#screen').click();
   await listener.waitForFunction(() => [...window.lab.consumers.values()].some(c => c.appData.source === 'screen'));
   assert.equal(await sharer.evaluate(() => window.captureOptions.audio), false);
   assert.equal(await listener.evaluate(() => [...window.lab.consumers.values()].some(c => c.appData.source === 'screenAudio')), false);
-  await sharer.locator('#screen').click(); await sharer.locator('#screenSound').check();
+  await sharer.locator('#screen').click(); await sharer.locator('#moreToggle').click(); await sharer.locator('#screenSound').check(); await sharer.locator('#moreToggle').click();
   await sharer.locator('#screen').click();
   await listener.waitForFunction(() => [...window.lab.consumers.values()].some(c => c.appData.source === 'screenAudio'));
   await sharer.evaluate(() => { const video = window.testDisplay.getVideoTracks()[0]; video.stop(); video.dispatchEvent(new Event('ended')); });

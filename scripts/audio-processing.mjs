@@ -157,11 +157,14 @@ try {
   const micTrack = () => alice.page.evaluate(() => { const p = window.lab.producers.find(x => x.appData.source === 'microphone'); return { id: p.track?.id, state: p.track?.readyState, producer: p.id }; });
   const readout = () => alice.page.evaluate(() => ({ active: document.querySelector('#audioActive').textContent, settings: document.querySelector('#audioSettings').textContent, error: document.querySelector('#audioError').textContent, stats: document.querySelector('#audioStats').textContent }));
   const choose = async ({ mode, echo, noise }) => {
+    // Audio processing lives in the Audio settings dialog (⋯ > Audio settings).
+    if (await alice.page.locator('#settingsModal').isHidden()) { await alice.page.locator('#moreToggle').click(); await alice.page.locator('#moreMenu [data-open-settings]').click(); }
     const box = async (id, on) => { if ((await alice.page.locator(id).isChecked()) !== on) await alice.page.locator(id).click(); await alice.page.waitForFunction(() => !document.querySelector('#audioEcho').disabled, null, { timeout: 60000 }); };
     if (echo !== undefined) await box('#audioEcho', echo);
     if (noise !== undefined) await box('#audioNoise', noise);
     if (mode) await alice.page.locator(`input[name="audioMode"][value="${mode}"]`).check();
     await alice.page.waitForFunction(() => !document.querySelector('#audioEcho').disabled && !document.querySelector('#audioActive').textContent.startsWith('Switching'), null, { timeout: 60000 });
+    await alice.page.locator('#settingsModal [data-close-settings]').click();
     return readout();
   };
   report.live = [];
