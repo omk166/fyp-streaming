@@ -79,6 +79,7 @@ app.get(['/', '/index.html', '/home'], auth.requireSession, (req, res) => {
 });
 app.get('/meeting', auth.requireSession, (_req, res) => res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
 app.use(createAudioTest({ auth, transcribe }));
+app.use('/vendor/selfie-segmentation', express.static(fileURLToPath(new URL('./node_modules/@mediapipe/selfie_segmentation/', import.meta.url))));
 app.use(express.static('public', { index: false }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = tls ? createHttpsServer(tls, app) : createServer(app);

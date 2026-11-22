@@ -75,7 +75,7 @@
     <label class="field-label" for="preferredLanguage">My language</label>
     <div class="select-wrap"><svg class="ic"><use href="#i-globe"/></svg><select id="preferredLanguage" aria-describedby="languageHint"><option value="auto">Arabic + English (mixed)</option><option value="ar">Arabic</option><option value="en">English</option></select></div>
     <p id="languageHint" class="hint left">The language you speak and want to hear. Captions use it.</p>
-    <button class="link-btn" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio settings</button>
+    <button class="link-btn" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio &amp; video settings</button>
     <label class="sr-only" for="room">Room</label><input id="room" class="sr-only" readonly maxlength="48" tabindex="-1">
     <button id="join" class="primary" type="button" disabled>Join room</button>
     <p class="hint">Your camera and microphone turn on when you join.</p>
@@ -180,7 +180,7 @@
           <ul id="recordings"></ul>
         </section>
         <hr>
-        <button class="menu-item" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio settings</button>
+        <button class="menu-item" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio &amp; video settings</button>
         <button class="menu-item show-sm" type="button" data-proxy="boardToggle"><svg class="ic"><use href="#i-board"/></svg>Whiteboard</button>
         <label class="menu-item check"><input id="screenSound" type="checkbox" checked>Include screen sound when sharing</label>
         <p id="screenAudioStatus" class="muted small" role="status"></p>
@@ -205,10 +205,23 @@
   <div class="modal-card"><span class="modal-icon"><svg class="ic"><use href="#i-cc"/></svg></span><h2 id="transcriptionConsentTitle">Live transcription</h2><p>The host wants to transcribe everyone’s microphones on the meeting server. The text is shared with everyone in this call.</p>
   <div class="modal-actions"><button id="transcriptionDecline" class="secondary">Decline</button><button id="transcriptionAllow" class="primary">Allow transcription</button></div></div>
 </div>
-<div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="audioHeading" hidden>
+<div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsHeading" hidden>
   <div class="modal-card settings-card">
+  <div class="settings-head"><h2 id="settingsHeading">Audio &amp; video settings</h2><button class="ghost icon-only" type="button" data-close-settings title="Close"><svg class="ic"><use href="#i-x"/></svg><span class="sr-only">Close settings</span></button></div>
+  <section id="backgroundPanel" aria-labelledby="backgroundHeading">
+    <h3 id="backgroundHeading">Camera background</h3>
+    <label class="field-label" for="backgroundMode">Background</label>
+    <select id="backgroundMode" disabled><option value="none">None</option><option value="blur">Blur</option><option value="studio">Studio</option><option value="mountains">Mountains</option><option value="custom">Your image</option></select>
+    <label id="backgroundBlurLabel" class="field-label" hidden>Blur strength
+      <select id="backgroundBlur" disabled><option value="6">Light</option><option value="12" selected>Medium</option><option value="20">Strong</option></select>
+    </label>
+    <label class="field-label" for="backgroundImage">Upload your own image</label>
+    <input id="backgroundImage" type="file" accept="image/jpeg,image/png,image/webp" disabled>
+    <p id="backgroundStatus" role="status">Join a meeting to use background effects.</p>
+    <p class="muted small">JPG, PNG or WebP, up to 10 MB. Your background appears in your preview and to others in the call. Processing stays on your device; screen sharing is unaffected.</p>
+  </section>
   <section id="audioPanel" aria-labelledby="audioHeading">
-    <div class="settings-head"><h2 id="audioHeading">Audio processing</h2><button class="ghost icon-only" type="button" data-close-settings title="Close"><svg class="ic"><use href="#i-x"/></svg><span class="sr-only">Close audio settings</span></button></div>
+    <h2 id="audioHeading">Audio processing</h2>
     <p class="muted small settings-sub">Choose how your microphone is cleaned up before others hear it.</p>
     <fieldset class="mode-cards"><legend class="field-label">Microphone processing</legend>
       <label class="mode-card"><input type="radio" name="audioMode" value="off"><span><strong>Off</strong><small>Raw microphone</small></span></label>

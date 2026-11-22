@@ -335,3 +335,10 @@ body[data-phase=lobby] #debugPanel{bottom:16px}
 .audio-test-link{display:inline-block;padding:10px 16px;border-radius:999px;background:var(--accent);color:#fff!important;text-decoration:none}
 @media (max-width:560px){.mode-cards{grid-template-columns:1fr}.settings-card{padding:20px}}
 @media (prefers-color-scheme:dark){.msg.private .text{background:#2e2007;color:#fec84b;border-color:#6b4a0f}.link-btn,.mode-card input:checked+span strong,#audioInfo a,.chat-notice{color:#f0b8cb}}
+
+/* Camera backgrounds in the shared settings dialog. */
+#backgroundPanel{margin:20px 0;padding-bottom:16px;border-bottom:1px solid var(--line)}
+#backgroundPanel h3{margin:0 0 14px;font-size:16px}
+#backgroundPanel select,#backgroundImage{width:100%;max-width:100%;box-sizing:border-box;margin-bottom:14px}
+#backgroundBlurLabel[hidden]{display:none}
+#backgroundPanel p{margin:8px 0;font-size:13px}

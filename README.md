@@ -46,6 +46,28 @@ Open http://127.0.0.1:3000. Log in, create an account, or choose Guest and enter
 
 Alternatively, start Docker Desktop and run `docker compose up --build`. The supplied Docker configuration binds to localhost only. Access from additional laptops needs a separately configured reachable media address and HTTPS for browser capture; it is not enabled by this local configuration.
 
+## Camera backgrounds
+
+After joining a meeting, open **More → Audio & video settings → Camera background**.
+Choose **Blur** (light, medium or strong), **Studio**, **Mountains**, or upload a
+JPG, PNG or WebP image up to 10 MB. **None** restores the original camera.
+Person segmentation preserves the foreground while replacing or blurring the
+background. The resulting track feeds the local meeting preview and outgoing
+camera video, including recordings that use those video tiles. Screen sharing
+and microphone processing keep their existing paths. Backgrounds reset on leave.
+
+The pinned `@mediapipe/selfie_segmentation` dependency includes the model and WASM
+assets, served locally by Express under `/vendor/selfie-segmentation/`. The existing
+`npm ci` and `npm run build` deployment steps include this feature; no separate
+model-download command or CDN is required for camera backgrounds. Uploaded images
+are decoded in the browser and are not uploaded as files to the server.
+
+Effects require browser WebGL and canvas video capture. Person-mask quality and
+processing speed depend on lighting, movement, browser and hardware; this port
+still needs a real-camera meeting check. If processing fails, the app reports the
+failure without automatically switching to the original background. Select an
+effect again to retry, or choose **None** to restore the original camera.
+
 ## Accounts, Google and guest entry
 
 `/auth` is a separate, replaceable page; the existing meeting page remains the research interface. Email signup asks for a name, email and 12–128 character password. Google sign-in creates an account on first use. Guests choose a name without creating an account. Guests are marked in the participant list. All three paths use an HttpOnly, SameSite=Lax cookie and server-side SQLite session; no session token is stored in browser JavaScript storage. Accounts last seven days per login, guests twelve hours. Sign-out revokes that session and closes its open meeting connections, including other tabs. WebSocket upgrades require a valid session and the same origin; client-supplied names cannot override the session identity.
