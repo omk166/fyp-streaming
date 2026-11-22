@@ -1,0 +1,47 @@
+{
+  "name": "fyp-streaming-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "esbuild client/main.js --bundle --format=esm --outfile=public/bundle.js && node scripts/build-audio.mjs",
+    "audio:models": "node scripts/audio-models.mjs --deepfilter-wasm=workadventure",
+    "test:audio-ui": "node scripts/audio-processing.mjs",
+    "start": "node --env-file-if-exists=.env server.js",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:auth": "node --test tests/auth.test.mjs",
+    "test:entry": "node scripts/auth-entry.mjs",
+    "test:rooms": "node --test tests/rooms.test.mjs",
+    "test:room-ui": "node scripts/protected-rooms.mjs",
+    "test:home": "node scripts/home.mjs",
+    "test:ui": "node scripts/ui-redesign.mjs",
+    "test:speaker": "node scripts/active-speaker.mjs",
+    "test:screen-audio": "node scripts/screen-audio.mjs",
+    "test:recording-policy": "node --test tests/recording.test.mjs",
+    "test:recording": "node scripts/recording.mjs",
+    "test:transcription": "node --test tests/transcription.test.mjs tests/speech-buffer.test.mjs",
+    "test:transcription-ui": "node scripts/transcription.mjs",
+    "test:transcription-real": "node scripts/transcription-real.mjs",
+    "report": "python scripts/report.py",
+    "overlay": "npm --prefix overlay install --no-audit --no-fund --silent && npm --prefix overlay start",
+    "test:whiteboard": "node --test tests/whiteboard.test.mjs",
+    "test:whiteboard-ui": "node scripts/whiteboard-ui.mjs"
+  },
+  "dependencies": {
+    "@litertjs/core": "2.6.0",
+    "@mediapipe/selfie_segmentation": "0.1.1675465747",
+    "express": "^5.1.0",
+    "google-auth-library": "11.3.4",
+    "mediasoup": "^3.19.0",
+    "mediasoup-client": "^3.18.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "playwright": "^1.56.0"
+  }
+}

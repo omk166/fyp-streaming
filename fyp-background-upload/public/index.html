@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Meeting · FYP Streaming Lab</title>
+<link rel="stylesheet" href="/meeting.css">
+<style>
+/* Only what the pop-out drawing window needs. The page styles live in /meeting.css, which popOut() also copies. */
+.annot,.freeze{position:absolute;pointer-events:none}body.drawing .annot.mine{pointer-events:auto;cursor:crosshair;touch-action:none}.freeze{object-fit:fill}
+.tile{position:relative;min-width:0;background:#1c1c21;overflow:hidden}.tile video{display:block;width:100%;height:100%;object-fit:contain}
+#wbBar{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;background:#ffffff;border:1px solid #e7e7ea;border-radius:18px;box-shadow:0 12px 32px -12px #1a1a1f40}#wbBar[hidden]{display:none}#wbBar.pip{position:static;transform:none;border:0;box-shadow:none;background:transparent}
+#wbBar>*{margin:0;width:44px;font:inherit}#wbBar button{height:44px;padding:0;font-size:18px;border-radius:12px;border:1px solid #e7e7ea;background:#fff;cursor:pointer}#wbBar button[aria-pressed=true]{background:#f6e9ee;border-color:#7a1f3d;color:#7a1f3d}#wbBar input[type=color]{height:36px;padding:2px;border:1px solid #e7e7ea;border-radius:10px;background:#fff}#wbBar select{padding:6px 2px;border:1px solid #e7e7ea;border-radius:10px;background:#fff}
+</style></head>
+<body data-phase="lobby" data-panel="">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="m2 2 20 20M18.9 12.9A7 7 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.3V5a3 3 0 0 0-5.7-1.3M9 9v3a3 3 0 0 0 5.1 2.1M12 19v3"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
+  <symbol id="i-cam-off" viewBox="0 0 24 24"><path d="M10.7 6H14a2 2 0 0 1 2 2v3.3l1 1L22 8v8M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2M2 2l20 20"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="m9 10 3-3 3 3M12 13V7M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></symbol>
+  <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24"><path d="M2 3h20M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3M7 21l5-5 5 5"/><path d="m8 11 3-3 2 2 3-3"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-leave" viewBox="0 0 24 24"><path d="M10.7 13.3a16 16 0 0 0 3.4 2.6l1.3-1.3a2 2 0 0 1 2.1-.5 12.8 12.8 0 0 0 2.8.7 2 2 0 0 1 1.7 2v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-3.3-2.6m-2.7-3.3a19.8 19.8 0 0 1-3.1-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7 12.8 12.8 0 0 0 .7 2.8 2 2 0 0 1-.5 2.1L8 9.9M22 2 2 22"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5M19.1 4.9C23 8.8 23 15.1 19.1 19"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9Z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <button id="home" class="ghost icon-only" type="button" title="Back to home"><svg class="ic"><use href="#i-back"/></svg><span class="label sr-only">Home</span></button>
+  <span class="logo" aria-hidden="true"><svg class="ic"><use href="#i-logo"/></svg></span>
+  <div class="title-block">
+    <h1 id="roomTitle">Meeting</h1>
+    <div class="meta"><span id="elapsed" class="call-only">00:00</span><span id="lockBadge" class="pill" hidden><svg class="ic"><use href="#i-lock"/></svg>Locked</span></div>
+  </div>
+  <span id="recPill" class="pill rec" hidden>REC</span>
+  <span id="ccPill" class="pill cc" hidden><svg class="ic"><use href="#i-cc"/></svg>Captions on</span>
+  <div class="spacer"></div>
+  <button id="viewMode" class="ghost call-only" type="button"><svg class="ic"><use href="#i-grid"/></svg><span class="label">Gallery view</span></button>
+  <div class="account">
+    <button id="accountToggle" class="avatar-btn" type="button" data-popover="accountMenu" aria-haspopup="true" aria-expanded="false" title="Account"><span id="myInitials">·</span></button>
+    <div id="accountMenu" class="popover menu" hidden>
+      <p id="identity" role="status">Checking your session…</p>
+      <button id="logout" type="button" disabled>Sign out</button>
+    </div>
+  </div>
+</header>
+
+<!-- Pre-join lobby -->
+<section id="lobby" aria-label="Get ready to join">
+  <div class="preview-card">
+    <video id="preview" autoplay playsinline muted hidden></video>
+    <div class="preview-empty" id="previewEmpty"><span class="big-avatar" id="previewInitials">·</span><button id="previewToggle" class="chip" type="button">Check my camera</button></div>
+    <div class="preview-controls">
+      <button id="lobbyMic" class="round" type="button" aria-pressed="false" title="Microphone will be on"><svg class="ic on"><use href="#i-mic"/></svg><svg class="ic off"><use href="#i-mic-off"/></svg><span class="sr-only">Join with microphone off</span></button>
+      <button id="lobbyCam" class="round" type="button" aria-pressed="false" title="Camera will be on"><svg class="ic on"><use href="#i-cam"/></svg><svg class="ic off"><use href="#i-cam-off"/></svg><span class="sr-only">Join with camera off</span></button>
+    </div>
+  </div>
+  <div class="join-card">
+    <p class="eyebrow">Ready to join?</p>
+    <h2 id="lobbyTitle">Meeting</h2>
+    <p id="roomNotice" role="status">Checking room access…</p>
+    <label class="field-label" for="username">Joining as</label>
+    <input id="username" readonly maxlength="40" autocomplete="nickname">
+    <label class="field-label" for="preferredLanguage">My language</label>
+    <div class="select-wrap"><svg class="ic"><use href="#i-globe"/></svg><select id="preferredLanguage" aria-describedby="languageHint"><option value="auto">Arabic + English (mixed)</option><option value="ar">Arabic</option><option value="en">English</option></select></div>
+    <p id="languageHint" class="hint left">The language you speak and want to hear. Captions use it.</p>
+    <button class="link-btn" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio &amp; video settings</button>
+    <label class="sr-only" for="room">Room</label><input id="room" class="sr-only" readonly maxlength="48" tabindex="-1">
+    <button id="join" class="primary" type="button" disabled>Join room</button>
+    <p class="hint">Your camera and microphone turn on when you join.</p>
+    <div id="ownerSlotLobby" class="owner-slot">
+      <div id="roomOwner" hidden>
+        <p class="section-title">Host tools</p>
+        <input id="inviteLink" aria-label="Invitation link" readonly hidden>
+        <div class="owner-actions">
+          <button id="copyInvite" class="secondary" type="button">Copy invitation</button>
+          <button id="rotateInvite" class="secondary" type="button">New invitation</button>
+          <button id="lockRoom" class="secondary" type="button">Lock room</button>
+          <button id="endRoom" class="danger-outline" type="button">End room</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- In-meeting -->
+<div id="call">
+  <main id="stageWrap">
+    <div id="aloneCard" class="alone-card"><strong>You’re the only one here</strong><span>Share the invitation so others can join.</span><button class="chip" type="button" data-panel-open="people">Invite people</button></div>
+    <div id="videoArea" data-layout="gallery"><div id="stage" aria-label="Main video" hidden></div><div id="media"></div></div>
+    <div id="captionOverlay" hidden><p id="captionText" dir="auto"></p></div>
+    <div id="reactions" aria-live="polite" aria-label="Meeting reactions"></div>
+    <section id="boardPanel" aria-label="Shared whiteboard" hidden>
+      <div class="board-head">
+        <strong>Whiteboard</strong>
+        <div id="boardTools">
+          <label class="sr-only" for="boardTool">Tool</label><select id="boardTool"><option value="pencil">Pencil</option><option value="marker">Marker</option><option value="highlighter">Highlighter</option><option value="eraser">Eraser</option><option value="line">Line</option><option value="arrow">Arrow</option><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option></select>
+          <label class="sr-only" for="boardColor">Color</label><input id="boardColor" type="color" value="#7a1f3d">
+          <label class="sr-only" for="boardSize">Size</label><select id="boardSize"><option value="2">Fine</option><option value="5" selected>Medium</option><option value="12">Thick</option><option value="24">Extra thick</option></select>
+          <button id="boardUndo" class="ghost" type="button">Undo</button><button id="boardClear" class="ghost" type="button" hidden>Clear</button><button id="boardSave" class="ghost" type="button">Download PNG</button>
+          <button id="boardPresent" class="chip" type="button">Show to everyone</button>
+          <button id="boardClose" class="ghost icon-only" type="button" title="Close whiteboard"><svg class="ic"><use href="#i-x"/></svg><span class="sr-only">Close whiteboard</span></button>
+        </div>
+      </div>
+      <p id="boardMessage" role="status">Pick a tool and draw. Hold Shift for a square or circle. Esc cancels.</p>
+      <div class="board-canvas"><canvas id="boardCanvas" width="1200" height="675" aria-label="Shared drawing canvas. Choose a tool and draw with a mouse, pen, or touch."></canvas></div>
+    </section><!-- end whiteboard -->
+  </main>
+
+  <aside id="sidePanel" aria-label="Meeting panel">
+    <div class="panel-head">
+      <div class="tabs" role="tablist">
+        <button role="tab" type="button" data-tab="chat">Chat</button>
+        <button role="tab" type="button" data-tab="people">People <span id="peopleCount" class="count">0</span></button>
+        <button role="tab" type="button" data-tab="captions">Transcript</button>
+      </div>
+      <button class="ghost icon-only" type="button" data-panel-close title="Close panel"><svg class="ic"><use href="#i-x"/></svg><span class="sr-only">Close panel</span></button>
+    </div>
+    <section class="pane" id="pane-chat" aria-label="Chat">
+      <div id="chat" aria-live="polite" role="log"><p class="empty">Messages are visible to everyone in the call.</p></div>
+      <p id="chatNotice" class="chat-notice" role="status"></p>
+      <form id="chatForm"><div class="to-row"><label for="chatTo">To</label><select id="chatTo"><option value="">Everyone</option></select></div><div class="msg-row"><label class="sr-only" for="message"><span id="messageLabel">Room message</span></label><input id="message" maxlength="1000" placeholder="Send a message" autocomplete="off"><button id="send" class="send" disabled title="Send"><svg class="ic"><use href="#i-send"/></svg><span class="label sr-only">Send</span></button></div></form>
+    </section>
+    <section class="pane" id="pane-people" aria-label="People">
+      <ul id="participants" aria-live="polite"></ul>
+      <div id="ownerSlotCall" class="owner-slot"></div>
+    </section>
+    <section class="pane" id="pane-captions" aria-label="Meeting transcription">
+      <div class="cap-head">
+        <strong id="transcriptionStatus" role="status">Transcription needs server setup.</strong>
+        <label class="field-label" for="transcriptionLanguage">My speech language</label>
+        <select id="transcriptionLanguage"><option value="auto">Arabic + English (automatic)</option><option value="ar">Arabic</option><option value="en">English</option></select>
+        <div class="row">
+          <button id="transcriptionStart" class="primary small" hidden disabled>Start transcription</button>
+          <button id="transcriptionStop" class="secondary" hidden>Stop transcription</button>
+          <button id="transcriptionWithdraw" class="secondary" hidden>Withdraw consent &amp; stop</button>
+        </div>
+        <p id="transcriptionQueue" class="muted" role="status"></p><p id="transcriptionWarning" class="warning" role="alert"></p>
+      </div>
+      <div id="transcript" role="log" aria-live="polite"></div>
+      <div class="row downloads"><button id="transcript-txt" class="secondary" disabled>Download TXT</button><button id="transcript-srt" class="secondary" disabled>Download SRT</button></div>
+    </section>
+  </aside>
+</div>
+
+<!-- Bottom control bar -->
+<footer id="controls" aria-label="Meeting controls">
+  <div class="ctrl-group">
+    <button id="mic" class="ctrl" disabled><svg class="ic on"><use href="#i-mic"/></svg><svg class="ic off"><use href="#i-mic-off"/></svg><span class="label sr-only">Mute microphone</span></button>
+    <button id="camera" class="ctrl" disabled><svg class="ic on"><use href="#i-cam"/></svg><svg class="ic off"><use href="#i-cam-off"/></svg><span class="label sr-only">Pause camera</span></button>
+    <button id="screen" class="ctrl hide-sm" disabled><svg class="ic"><use href="#i-share"/></svg><span class="label sr-only">Share screen</span></button>
+    <button id="hand" class="ctrl" aria-pressed="false" disabled><svg class="ic"><use href="#i-hand"/></svg><span class="label sr-only">Raise hand</span></button>
+    <div class="pop-wrap">
+      <button id="reactToggle" class="ctrl" type="button" data-popover="reactPop" aria-expanded="false" title="Reactions"><svg class="ic"><use href="#i-smile"/></svg><span class="sr-only">Reactions</span></button>
+      <div id="reactPop" class="popover reacts" role="group" aria-label="Reactions" hidden>
+        <button id="react-like" data-reaction="thumbs-up" aria-label="Thumbs up" disabled>&#128077;</button><button id="react-heart" data-reaction="heart" aria-label="Heart" disabled>&#10084;&#65039;</button><button id="react-laugh" data-reaction="laugh" aria-label="Laugh" disabled>&#128514;</button>
+      </div>
+    </div>
+    <button id="boardToggle" class="ctrl hide-sm" disabled aria-expanded="false" aria-controls="boardPanel" title="Whiteboard"><svg class="ic"><use href="#i-board"/></svg><span class="sr-only">Whiteboard</span></button>
+    <div class="pop-wrap">
+      <button id="moreToggle" class="ctrl" type="button" data-popover="moreMenu" aria-expanded="false" title="More options"><svg class="ic"><use href="#i-more"/></svg><span class="sr-only">More options</span></button>
+      <div id="moreMenu" class="popover menu wide" hidden>
+        <section aria-label="Meeting recording" class="rec-box">
+          <div class="rec-line"><svg class="ic"><use href="#i-rec"/></svg><strong id="recordingIndicator" role="status" data-active="false">Not recording</strong></div>
+          <button id="recordRequest" class="menu-item" hidden disabled>Request recording &amp; agree</button>
+          <button id="recordStop" class="menu-item danger" hidden>Stop recording</button>
+          <button id="recordWithdraw" class="menu-item" hidden>Withdraw consent &amp; stop recording</button>
+          <p id="recordingHint" class="muted small">Recording starts after everyone agrees. Clips are up to 30 minutes or 200 MB and download to the host’s computer.</p>
+          <ul id="recordings"></ul>
+        </section>
+        <hr>
+        <button class="menu-item" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio &amp; video settings</button>
+        <button class="menu-item show-sm" type="button" data-proxy="boardToggle"><svg class="ic"><use href="#i-board"/></svg>Whiteboard</button>
+        <label class="menu-item check"><input id="screenSound" type="checkbox" checked>Include screen sound when sharing</label>
+        <p id="screenAudioStatus" class="muted small" role="status"></p>
+        <button class="menu-item debug-only" type="button" data-debug-toggle><svg class="ic"><use href="#i-wrench"/></svg>Research tools</button>
+      </div>
+    </div>
+  </div>
+  <div class="ctrl-group side">
+    <button class="ctrl" type="button" data-panel-open="captions" title="Transcript"><svg class="ic"><use href="#i-cc"/></svg><span class="sr-only">Transcript</span></button>
+    <button class="ctrl" type="button" data-panel-open="people" title="People"><svg class="ic"><use href="#i-users"/></svg><span class="sr-only">People</span></button>
+    <button class="ctrl" type="button" data-panel-open="chat" title="Chat"><svg class="ic"><use href="#i-chat"/></svg><span id="chatBadge" class="badge" hidden></span><span class="sr-only">Chat</span></button>
+    <button id="leave" class="leave" disabled><svg class="ic"><use href="#i-leave"/></svg><span class="label">Leave</span></button>
+  </div>
+</footer>
+
+<!-- Consent and confirmation modals -->
+<div id="recordConsent" class="modal" role="dialog" aria-modal="true" aria-labelledby="recordConsentTitle" hidden>
+  <div class="modal-card"><span class="modal-icon rec"><svg class="ic"><use href="#i-rec"/></svg></span><h2 id="recordConsentTitle">Recording request</h2><p id="recordConsentText"></p>
+  <div class="modal-actions"><button id="recordDecline" class="secondary">Decline</button><button id="recordAllow" class="primary">Allow recording</button></div></div>
+</div>
+<div id="transcriptionConsent" class="modal" role="dialog" aria-modal="true" aria-labelledby="transcriptionConsentTitle" hidden>
+  <div class="modal-card"><span class="modal-icon"><svg class="ic"><use href="#i-cc"/></svg></span><h2 id="transcriptionConsentTitle">Live transcription</h2><p>The host wants to transcribe everyone’s microphones on the meeting server. The text is shared with everyone in this call.</p>
+  <div class="modal-actions"><button id="transcriptionDecline" class="secondary">Decline</button><button id="transcriptionAllow" class="primary">Allow transcription</button></div></div>
+</div>
+<div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsHeading" hidden>
+  <div class="modal-card settings-card">
+  <div class="settings-head"><h2 id="settingsHeading">Audio &amp; video settings</h2><button class="ghost icon-only" type="button" data-close-settings title="Close"><svg class="ic"><use href="#i-x"/></svg><span class="sr-only">Close settings</span></button></div>
+  <section id="backgroundPanel" aria-labelledby="backgroundHeading">
+    <h3 id="backgroundHeading">Camera background</h3>
+    <label class="field-label" for="backgroundMode">Background</label>
+    <select id="backgroundMode" disabled><option value="none">None</option><option value="blur">Blur</option><option value="studio">Studio</option><option value="mountains">Mountains</option><option value="custom">Your image</option></select>
+    <label id="backgroundBlurLabel" class="field-label" hidden>Blur strength
+      <select id="backgroundBlur" disabled><option value="6">Light</option><option value="12" selected>Medium</option><option value="20">Strong</option></select>
+    </label>
+    <label class="field-label" for="backgroundImage">Upload your own image</label>
+    <input id="backgroundImage" type="file" accept="image/jpeg,image/png,image/webp" disabled>
+    <p id="backgroundStatus" role="status">Join a meeting to use background effects.</p>
+    <p class="muted small">JPG, PNG or WebP, up to 10 MB. Your background appears in your preview and to others in the call. Processing stays on your device; screen sharing is unaffected.</p>
+  </section>
+  <section id="audioPanel" aria-labelledby="audioHeading">
+    <h2 id="audioHeading">Audio processing</h2>
+    <p class="muted small settings-sub">Choose how your microphone is cleaned up before others hear it.</p>
+    <fieldset class="mode-cards"><legend class="field-label">Microphone processing</legend>
+      <label class="mode-card"><input type="radio" name="audioMode" value="off"><span><strong>Off</strong><small>Raw microphone</small></span></label>
+      <label class="mode-card"><input type="radio" name="audioMode" value="browser"><span><strong>Browser</strong><small>Built-in processing</small></span></label>
+      <label class="mode-card"><input type="radio" name="audioMode" value="ours"><span><strong>Ours</strong><small>DTLN-aec 128 + DeepFilterNet3</small></span></label>
+    </fieldset>
+    <div class="switches">
+      <label class="switch"><input type="checkbox" id="audioEcho" role="switch"><span class="track"></span>Echo cancellation</label>
+      <label class="switch"><input type="checkbox" id="audioNoise" role="switch"><span class="track"></span>Noise suppression</label>
+    </div>
+    <div class="audio-status"><p id="audioSwitchHint" class="audio-note"></p><p id="audioActive" role="status"></p><p id="audioSettings" class="audio-note" aria-live="polite"></p><p id="audioStats" class="audio-note" aria-live="off"></p><p id="audioError" role="alert"></p></div>
+    <p class="audio-note">Screen-share sound is sent unchanged: these settings only affect your microphone.</p>
+    <button id="audioInfoToggle" class="secondary" type="button" aria-expanded="false" aria-controls="audioInfo">Audio info</button>
+    <section id="audioInfo" aria-label="About audio processing" hidden>
+<p><a class="audio-test-link" href="/audio-test" target="_blank" rel="noopener">Open the audio test page: how good or bad is Ours on this computer? &rarr;</a></p>
+<h3>The three modes</h3>
+<ul><li><strong>Off (raw)</strong> turns the browser's echo cancellation, noise suppression and automatic gain control off. Others hear your microphone as captured: the baseline for comparison. If someone uses speakers, you may hear yourself echo back from them.</li>
+<li><strong>Browser (built-in)</strong> uses the browser's own processing (in Chrome and Edge: the WebRTC echo canceller AEC3, WebRTC noise suppression and automatic gain control). The two switches turn its echo cancellation and noise suppression on or off; gain control stays on. This was the app's behaviour before this panel existed.</li>
+<li><strong>Ours</strong> turns all browser processing off, so audio is never processed twice, then runs our own pipeline on this device: microphone &rarr; DTLN-aec 128 (echo, if on) &rarr; DeepFilterNet3 (noise, if on) &rarr; the call. The echo canceller is given the exact audio this page plays: other participants, plus the sound of a tab you share.</li></ul>
+<h3>Why these models</h3>
+<p>Echo: <strong>DTLN-aec 128</strong> (Westhausen &amp; Meyer, ICASSP 2021). Reported results against the WebRTC AEC3 baseline: ERLE 34.8 dB vs 24.2 dB, STOI 0.772 vs 0.628, with 24 ms output delay. We use the 128-unit model because the 512-unit one needs about 21&times; the compute. Noise: <strong>DeepFilterNet3</strong> (Schr&ouml;ter et al., 2023). Reported PESQ 2.18 and STOI 0.888 on the DNS Challenge 2020 remix test set, at about 25&times; the cost of WebRTC noise suppression and 3&times; DTLN's. These are published figures, not measurements made by this project; the test page measures your machine.</p>
+<h3>Trade-offs</h3>
+<ul><li><strong>Latency:</strong> DTLN-aec delays audio by 24 ms by design; DeepFilterNet3, resampling and buffering add more. The panel shows the measured total while Ours runs.</li>
+<li><strong>CPU:</strong> both models run on your device. The panel shows processing time per frame; if a slow machine cannot keep up, dropped audio is reported, not hidden.</li>
+<li><strong>Bandwidth:</strong> DTLN-aec only exists at 16 kHz, so with echo cancellation on your voice is limited to 8 kHz. Noise suppression alone keeps the full 48 kHz band.</li>
+<li><strong>Speech recognition:</strong> enhancement tuned for human listeners can remove or distort cues a recogniser relies on, and so raise its word error rate. Live transcription hears exactly what you send, so check the recognition result on the test page before relying on Ours with transcription.</li>
+<li>Ours has no automatic gain control, so your level may differ from Browser mode.</li></ul>
+<h3>How to test it</h3>
+<ol><li><strong>Live in a meeting:</strong> join, then switch modes or toggle the switches while someone else listens. The lines under the switches show the active mode and what the browser reports for <code>echoCancellation</code>, <code>noiseSuppression</code> and <code>autoGainControl</code>. With Ours they also show the measured added latency and processing time. If a mode cannot start, the reason appears here and your previous mode stays on.</li>
+<li><strong>Echo:</strong> use speakers, not headphones, while the other person talks. They listen for their own voice coming back; compare Off, Browser and Ours.</li>
+<li><strong>Noise:</strong> make steady noise near your microphone (a fan, typing, music on another device) and ask the other person how each mode sounds.</li>
+<li><strong>Two windows on one computer:</strong> open the invitation in a private window and join as a guest. Wear headphones or mute one window's microphone, or the two windows feed back into each other.</li>
+<li><strong>Measured comparison:</strong> on the <a href="/audio-test" target="_blank" rel="noopener">audio test page</a>, record the on-screen script once per mode (stay silent for the 3-second countdown). Run the echo test with speakers at a fixed volume, and tick <em>Play a noise clip</em> to test noise. Run the recognition check to see the word error rate; it uploads your recordings to this server's recognizer, and only when you press it. The results table shows only measured values; repeat takes before drawing conclusions.</li></ol>
+</section>
+  </section>
+  </div>
+</div>
+<div id="confirmModal" class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" hidden>
+  <div class="modal-card"><h2 id="confirmTitle"></h2><p id="confirmText"></p>
+  <div class="modal-actions"><button id="confirmCancel" class="secondary">Cancel</button><button id="confirmOk" class="danger"></button></div></div>
+</div>
+
+<p id="status" role="status">Ready. Recording requires everyone’s consent.</p>
+
+<!-- Research tools: only shown with ?debug=1 (benchmarks need them) -->
+<section id="debugPanel" aria-label="Research tools" hidden>
+  <div class="debug-head"><strong>Research tools</strong><button class="ghost icon-only" type="button" data-debug-toggle title="Hide"><svg class="ic"><use href="#i-x"/></svg><span class="sr-only">Hide research tools</span></button></div>
+  <div class="debug-grid">
+    <label>Video mode <select id="mode"><option value="h264">H.264 single</option><option value="simulcast">H.264 two layers</option><option value="vp9">VP9 SVC</option></select></label>
+    <label class="check"><input type="checkbox" id="synthetic">Synthetic test media</label>
+    <button id="export" class="secondary" type="button">Export raw telemetry</button>
+  </div>
+  <form id="roomCreate" hidden><label>New room <input id="newRoomName" maxlength="48" required placeholder="Room name"></label><button id="createRoom" class="secondary">Create room</button><label>Your rooms <select id="ownRooms"><option value="">Choose one of your rooms</option></select></label></form>
+  <p class="section-title">Live measurements</p>
+  <pre id="metrics">Join to collect one-second samples.</pre>
+</section>
+
+<aside id="wbBar" aria-label="Screen drawing tools" hidden><button id="wbDraw" type="button" aria-pressed="false" title="Draw on your shared screen; everyone sees it (Esc to stop)" disabled>&#9999;&#65039;</button><button id="wbPop" type="button" title="Pop out: a floating window with your screen and these tools, so you can draw while on other pages or apps" disabled>&#10064;</button><button id="wbFreeze" type="button" aria-pressed="false" title="Pause: viewers see a still of your screen; drawings stay live" disabled>&#9208;</button><input type="color" id="wbColor" value="#ff2d2d" title="Pen color" disabled><select id="wbSize" title="Pen size" disabled><option value="3">S</option><option value="6" selected>M</option><option value="14">L</option></select><button id="wbUndo" type="button" title="Undo your last stroke" disabled>&#8617;</button><button id="wbClear" type="button" title="Clear drawings" disabled>&#129529;</button></aside>
+<script type="module" src="/bundle.js"></script>
+</body></html>
