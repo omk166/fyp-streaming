@@ -3,6 +3,7 @@ import { Device } from 'mediasoup-client';
 import { setupRooms } from './rooms.js';
 import { setupRecording } from './recording-controls.js';
 import { setupTranscription } from './transcription.js';
+import { setupBackgroundEffects } from './background-effects.js';
 import { setupAudioProcessing } from './audio/controller.js';
 import { setupUI, setLabel, initials } from './ui.js';
 let pipWin = null; // pop-out drawing window (Document Picture-in-Picture); see popOut()
@@ -30,6 +31,8 @@ const recordingControls = setupRecording({ $, state, rpc, tiles: () => [...tiles
   ], notice: message => { $('status').textContent = message; } });
 const transcriptionControls = setupTranscription({ $, state, rpc, microphone: () => stream?.getAudioTracks()[0], notice: message => { $('status').textContent = message; } });
 const whiteboard = setupWhiteboard({ $, state, rpc });
+const backgroundEffects = setupBackgroundEffects({ $, producer: () => state.producers.find(p => p.appData.source === 'camera'),
+  preview: track => { const video = $('track-local'); if (video) video.srcObject = new MediaStream([track]); } });
 // Microphone processing (Off / Browser / Ours); see client/audio/. Screen-share sound is not affected.
 const audioProcessing = setupAudioProcessing({ $, event, onActive: detail => { if (state.metadata) state.metadata.audioProcessing = detail; } });
 // Keep `stream` holding the microphone track that is actually published (recording and transcription read it).
@@ -420,12 +423,14 @@ async function join() {
     const codec = device.rtpCapabilities.codecs.find(c => c.mimeType.toLowerCase() === (mode === 'vp9' ? 'video/vp9' : 'video/h264'));
     if (!codec) throw Error('Requested codec unsupported; no silent fallback');
     const encodings = mode === 'simulcast' ? [{ scaleResolutionDownBy: 2, maxBitrate: 150000 }, { scaleResolutionDownBy: 1, maxBitrate: 550000 }] : mode === 'vp9' ? [{ scalabilityMode: 'L2T3', maxBitrate: 700000 }] : [{ maxBitrate: 700000 }];
-    const cameraProducer = await send.produce({ track: stream.getVideoTracks()[0], codec, encodings, appData: { source: 'camera', initiallyPaused: joinCameraOff } });
+    // Background effects own processed tracks; retain the original camera across replacements.
+    const cameraProducer = await send.produce({ track: stream.getVideoTracks()[0], stopTracks: false, codec, encodings, appData: { source: 'camera', initiallyPaused: joinCameraOff } });
     if (joinCameraOff) cameraProducer.pause();
     state.producers.push(cameraProducer); setVideoPaused('local', joinCameraOff);
     state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; whiteboard.refresh(); state.joinMs = performance.now() - started;
+    backgroundEffects.start(stream.getVideoTracks()[0]);
     recordingControls.update(receivedRecording || info.recording);
     transcriptionControls.update(receivedTranscription || info.transcription);
     roomControls.refresh();
@@ -454,6 +459,7 @@ async function returnHome(reason = 'left') {
 }
 function leave() {
   state.joined = false; whiteboard.leave(); session++;
+  backgroundEffects.stop();
   const recordingFinished = recordingControls.leave();
   transcriptionControls.leave();
   state.activeSpeaker = null; spotlightSpeaker = null; clearTimeout(speakerTimer);

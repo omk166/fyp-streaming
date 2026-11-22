@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@litertjs/core": "2.6.0",
+    "@mediapipe/selfie_segmentation": "0.1.1675465747",
     "express": "^5.1.0",
     "google-auth-library": "11.3.4",
     "mediasoup": "^3.19.0",
