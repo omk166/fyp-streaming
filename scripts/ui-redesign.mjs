@@ -26,8 +26,8 @@ try {
   const target = `${base}/meeting?synthetic=1&${room.query}${room.fragment}`;
   await host.goto(target); await host.waitForFunction(() => !document.querySelector('#join').disabled);
   assert.equal(await host.locator('#debugPanel').isVisible(), false);
-  await host.locator('#preferredLanguage').selectOption('en');
-  assert.equal(await host.locator('#transcriptionLanguage').inputValue(), 'en');
+  await host.locator('#preferredLanguage').selectOption('eng_Latn');
+  assert.equal(await host.locator('#transcriptionLanguage').inputValue(), 'eng_Latn');
   await host.locator('#previewToggle').click(); await host.locator('#previewToggle').click();
   await host.evaluate(() => window.previewRequests[0].resolve());
   await host.waitForFunction(() => window.previewRequests[0].stream.getTracks()[0].readyState === 'ended');

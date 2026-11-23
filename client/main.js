@@ -360,8 +360,6 @@ async function join() {
         transcriptionControls.segment(message.data);
       } else if (message.event === 'transcriptionWarning') {
         transcriptionControls.warning(message.data.message);
-      } else if (message.event === 'transcriptionProgress') {
-        transcriptionControls.progress(message.data);
       } else if (message.event === 'transcriptionFlush') {
         transcriptionControls.flush(message.data);
       } else if (message.event === 'recordingState') {
@@ -427,6 +425,7 @@ async function join() {
     for (const id of await rpc('list')) await consume(id);
     state.joined = true; whiteboard.refresh(); state.joinMs = performance.now() - started;
     recordingControls.update(receivedRecording || info.recording);
+    transcriptionControls.configure(info.speechService);
     transcriptionControls.update(receivedTranscription || info.transcription);
     roomControls.refresh();
     event('joined', { joinMs: state.joinMs });

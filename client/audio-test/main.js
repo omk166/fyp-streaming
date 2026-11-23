@@ -5,6 +5,7 @@ import { MODES, browserConstraints, readSettings, compareSettings, formatSetting
 import { encodeWav, estimateDelay, Downsampler, meanSquare, powerDb, rmsDbfs, speechToNoise, frameLevels, wordErrorRate } from '../audio/dsp.js';
 import { speechLikeClip, pinkNoise, averageTo16k } from './signals.js';
 import { SpeechBuffer } from '../../public/speech-buffer.js';
+import { createLocalSpeech, speechProblem } from '../local-speech.js';
 
 const RATE = 48000, LEAD_IN = 3, TAKE_SECONDS = 20;
 const ECHO_SILENCE = 1.5, ECHO_CLIP = 8, ECHO_TAIL = 0.7;
@@ -267,15 +268,17 @@ function echoPresence(clip, recorded) {
   return confidence > 8 ? { ms: lag / 16, confidence: Math.round(confidence) } : null;
 }
 
-// ---- 3. Recognition check through the server's transcription path.
+// ---- 3. Recognition check through this computer's speech service, the recognizer live transcription uses.
 async function recognition() {
   if (busy) return;
   lock(true); setError('');
   try {
-    const status = await fetch('/api/audio-test/status', { cache: 'no-store' }).then(r => (r.ok ? r.json() : { transcription: false }));
-    if (!status.transcription) {
-      for (const mode of ORDER) if (results[mode].take?.out) results[mode].recognition = { error: 'transcription is not configured on this server' };
-      $('werStatus').textContent = 'Not measured: this server has no speech recognizer configured (TRANSCRIPTION_URL). Nothing was uploaded.';
+    const { speechService } = await fetch('/api/audio-test/status', { cache: 'no-store' }).then(r => (r.ok ? r.json() : {}));
+    const speech = speechService && createLocalSpeech(speechService);
+    const problem = speech ? speechProblem(await speech.status(), speechService, location.origin) : 'This server did not say where the local speech service is.';
+    if (problem) {
+      for (const mode of ORDER) if (results[mode].take?.out) results[mode].recognition = { error: 'the speech service on this computer is not ready' };
+      $('werStatus').textContent = `Not measured: ${problem} Nothing was sent.`;
       return;
     }
     for (const mode of ORDER) {
@@ -287,11 +290,9 @@ async function recognition() {
       buffer.flush();
       const texts = [];
       for (let i = 0; i < chunks.length; i++) {
-        $('werStatus').textContent = `${MODES[mode].label}: uploading segment ${i + 1} of ${chunks.length}…`;
-        const response = await fetch('/api/audio-test/transcribe', { method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Speech-Language': 'en' }, body: encodeWav(chunks[i], 16000) });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw Error(body.error || `HTTP ${response.status}`);
-        if (body.text) texts.push(body.text);
+        $('werStatus').textContent = `${MODES[mode].label}: recognizing segment ${i + 1} of ${chunks.length} on this computer…`;
+        const text = await speech.transcribe(chunks[i], 'eng_Latn');
+        if (text) texts.push(text);
       }
       const hypothesis = texts.join(' ');
       results[mode].recognition = { segments: chunks.length, hypothesis, ...wordErrorRate(SCRIPT, hypothesis) };

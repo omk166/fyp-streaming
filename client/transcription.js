@@ -1,14 +1,5 @@
-export function wavBase64(samples) {
-  const bytes = new Uint8Array(44 + samples.length * 2), view = new DataView(bytes.buffer);
-  const word = (offset, text) => [...text].forEach((c, i) => bytes[offset + i] = c.charCodeAt(0));
-  word(0, 'RIFF'); view.setUint32(4, bytes.length - 8, true); word(8, 'WAVE'); word(12, 'fmt ');
-  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-  view.setUint32(24, 16000, true); view.setUint32(28, 32000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-  word(36, 'data'); view.setUint32(40, samples.length * 2, true);
-  samples.forEach((v, i) => view.setInt16(44 + i * 2, Math.round(Math.max(-1, Math.min(1, v)) * 32767), true));
-  let binary = ''; for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-  return btoa(binary);
-}
+import { createLocalSpeech, speechProblem } from './local-speech.js';
+
 export function timestamp(ms, srt = false) {
   const n = Math.max(0, Math.floor(ms));
   return `${String(Math.floor(n / 3600000)).padStart(2, '0')}:${String(Math.floor(n / 60000) % 60).padStart(2, '0')}:${String(Math.floor(n / 1000) % 60).padStart(2, '0')}${srt ? ',' + String(n % 1000).padStart(3, '0') : ''}`;
@@ -19,19 +10,68 @@ export function exportTranscript(segments, format) {
     : `[${timestamp(s.start)}] ${s.username}: ${s.text}`).join('\n');
 }
 
-export function setupTranscription({ $, state, rpc, microphone, notice }) {
-  let current = { phase: 'idle', enabled: false }, segments = new Map(), ctx, source, capture, silent, generation = 0, starting = false, captureTrack = null;
+// Speech waiting for this computer's recognizer: 48 segments is up to about six minutes of continuous speech.
+const MAX_QUEUE = 48;
+
+// Live transcription. The microphone is cut into speech segments in an AudioWorklet, recognized by the speech
+// service on this computer, and only the text goes to the meeting server, which shares it with the room.
+export function setupTranscription({ $, state, rpc, microphone, notice, createSpeech = createLocalSpeech }) {
+  let current = { phase: 'idle' }, segments = new Map(), ctx, source, capture, silent, generation = 0, starting = false, captureTrack = null;
+  let speech = null, health = { status: 'unknown' }, healthTimer = null, queue = [], working = null, idleWaiters = [];
   const render = () => {
     const active = current.phase === 'recording', pending = current.phase === 'consent', finishing = current.phase === 'finishing', owner = state.room?.role === 'owner';
-    $('transcriptionStatus').textContent = !current.enabled ? 'Transcription needs server setup.' : finishing ? 'Finishing the remaining speech…' : active ? 'Transcription active — Arabic / English' : pending ? 'Waiting for everyone to agree…' : 'Transcription stopped';
+    $('transcriptionStatus').textContent = finishing ? 'Finishing: each computer is transcribing its remaining speech…' : active ? 'Transcription active' : pending ? 'Waiting for everyone to agree…' : 'Transcription stopped';
+    $('transcriptionService').textContent = health.status === 'ready' ? `Speech recognized on this computer: ${health.model} (${health.device}).${health.languageHints === false ? ' This model detects the language itself, so the language choice does not change it.' : ''}`
+      : health.status === 'unknown' || !speech ? 'Speech is recognized on each participant’s own computer.' : speechProblem(health, speech.url, location.origin);
+    $('transcriptionConsentNote').textContent = health.status === 'unknown' || health.status === 'ready' || !speech ? '' : speechProblem(health, speech.url, location.origin);
     $('transcriptionStart').hidden = !owner || active || pending || finishing;
-    $('transcriptionStart').disabled = !state.joined || !current.enabled || !globalThis.AudioWorkletNode;
+    $('transcriptionStart').disabled = !state.joined || !globalThis.AudioWorkletNode;
     $('transcriptionStop').hidden = !owner || (!active && !pending && !finishing);
     $('transcriptionStop').disabled = finishing;
     $('transcriptionConsent').hidden = !state.joined || !pending || current.approvedPeerIds?.includes(state.peerId);
     $('transcriptionWithdraw').hidden = !state.joined || (!active && !finishing);
     for (const format of ['txt', 'srt']) $(`transcript-${format}`).disabled = !segments.size;
   };
+  // Only checked when transcription is about to involve this person: on a deployed site the browser may ask
+  // for permission to reach this computer, which should not happen to people who never use transcription.
+  async function checkService() {
+    clearTimeout(healthTimer);
+    if (!speech) return 'Join the meeting first.';
+    health = await speech.status(); render();
+    if (health.status === 'loading' && state.joined) healthTimer = setTimeout(checkService, 5000);
+    return speechProblem(health, speech.url, location.origin);
+  }
+  const progress = () => {
+    const jobs = [...queue, ...(working ? [working.job] : [])], seconds = Math.round(jobs.reduce((sum, job) => sum + job.duration, 0) / 1000);
+    $('transcriptionQueue').textContent = jobs.length ? `This computer is transcribing ${jobs.length} speech segment(s), about ${seconds} s of audio. Captions may be delayed.` : '';
+  };
+  function enqueue(job) {
+    if (queue.length >= MAX_QUEUE) { warning('This computer cannot keep up with live transcription, so some speech was skipped.'); return; }
+    queue.push(job); progress();
+    if (!working) pump();
+  }
+  // One segment at a time, in order, so a slow computer delays captions but does not reorder or drop them.
+  async function pump() {
+    while (queue.length) {
+      const job = queue.shift(), controller = new AbortController();
+      working = { job, controller }; progress();
+      try {
+        const text = await speech.transcribe(job.samples, job.language, controller.signal);
+        if (text && !controller.signal.aborted && job.id === current.id) await rpc('transcriptionText', { id: job.id, seq: job.seq, offset: job.offset, duration: job.duration, text });
+      } catch (error) {
+        if (!controller.signal.aborted && job.id === current.id && current.phase !== 'idle') warning(`Some speech could not be transcribed: ${error.message}.`);
+      }
+    }
+    working = null; progress();
+    for (const resolve of idleWaiters.splice(0)) resolve();
+  }
+  const whenIdle = () => (working || queue.length ? new Promise(resolve => idleWaiters.push(resolve)) : Promise.resolve());
+  function cancelQueue() { queue = []; working?.controller.abort(); progress(); }
+  // Tell the server once every segment captured before Stop has been transcribed and sent.
+  function finish(id) {
+    whenIdle().then(() => { if (current.id === id && current.phase === 'finishing') return rpc('transcriptionFlushed', { id }); })
+      .catch(error => notice(error.message));
+  }
   function stopCapture() {
     generation++; starting = false;
     if (capture) { capture.port.onmessage = null; capture.disconnect(); }
@@ -57,14 +97,12 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
       let seq = 0;
       const captureOffset = Math.max(0, Date.now() - current.startedAt);
       capture.port.onmessage = ({ data }) => {
-        if (data.flushed) {
-          stopCapture(); rpc('transcriptionFlushed', { id }).catch(error => notice(error.message)); return;
-        }
+        if (data.flushed) { stopCapture(); finish(id); return; }
         const { samples, startSample } = data;
         const offset = captureOffset + startSample / 16, sequence = seq++;
         const muted = state.producers.find(p => p.appData.source === 'microphone')?.paused;
         if (muted || captureTrack?.readyState !== 'live' || token !== generation) return;
-        rpc('transcriptionAudio', { id, seq: sequence, offset, language: $('transcriptionLanguage').value, wav: wavBase64(samples) }).catch(error => warning(error.message));
+        enqueue({ id, seq: sequence, offset, duration: samples.length / 16, samples, language: $('transcriptionLanguage').value });
       };
     } catch (error) {
       stopCapture(); notice(`Transcription capture failed: ${error.message}`);
@@ -83,15 +121,23 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
   }
   function update(next) {
     if (next.id && next.id !== current.id) { segments.clear(); $('transcript').replaceChildren(); $('transcriptionWarning').textContent = ''; }
+    const asked = next.phase === 'consent' && current.phase !== 'consent' && !next.approvedPeerIds?.includes(state.peerId);
     current = next; for (const entry of next.segments || []) segment(entry);
     render();
     if (current.phase === 'recording') startCapture();
-    else if (current.phase === 'idle') stopCapture();
+    else if (current.phase === 'idle') { stopCapture(); cancelQueue(); }
+    if (asked && state.joined) checkService().catch(() => {});
     if (next.reason) notice(next.reason);
   }
-  const act = async (method, data, needsAudio = false) => {
-    try { if (needsAudio) await prepare(); await rpc(method, data); }
-    catch (error) { notice(error.message); if (current.phase === 'idle') stopCapture(); }
+  const act = async (method, data, needsSpeech = false) => {
+    try {
+      if (needsSpeech) {
+        const problem = await checkService();
+        if (problem) throw Error(problem);
+        await prepare();
+      }
+      await rpc(method, data);
+    } catch (error) { notice(error.message); if (current.phase === 'idle') stopCapture(); }
   };
   $('transcriptionStart').onclick = () => act('transcriptionRequest', {}, true);
   $('transcriptionAllow').onclick = () => act('transcriptionConsent', { id: current.id, allow: true }, true);
@@ -104,12 +150,13 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
   render();
   function warning(message) { $('transcriptionWarning').textContent = message; notice(message); }
   return { update, segment, warning,
+    // The meeting server tells each page where its local speech service is expected (LOCAL_SPEECH_URL).
+    configure(url) { speech = url ? createSpeech(url) : null; health = { status: 'unknown' }; render(); },
     downloads() { return segments.size ? { txt: exportTranscript([...segments.values()], 'txt'), srt: exportTranscript([...segments.values()], 'srt') } : null; },
-    progress(data) { $('transcriptionQueue').textContent = data.pending ? `Processing ${data.pending} speech segment(s), ${data.bufferedSeconds} seconds of audio buffered. Captions may be delayed.` : ''; },
     flush({ id }) {
       if (id !== current.id) return;
       if (capture) capture.port.postMessage('flush');
-      else rpc('transcriptionFlushed', { id }).catch(error => notice(error.message));
+      else finish(id);
     },
     resetAudio() { capture?.port.postMessage('reset'); },
     // The audio panel swapped the published microphone track: keep the same capture (and sequence) running on it.
@@ -118,6 +165,6 @@ export function setupTranscription({ $, state, rpc, microphone, notice }) {
       source?.disconnect();
       captureTrack = track; source = ctx.createMediaStreamSource(new MediaStream([track])); source.connect(capture);
     },
-    leave() { stopCapture(); current = { ...current, phase: 'idle' }; $('transcriptionQueue').textContent = ''; render(); },
+    leave() { stopCapture(); cancelQueue(); clearTimeout(healthTimer); current = { ...current, phase: 'idle' }; render(); },
   };
 }

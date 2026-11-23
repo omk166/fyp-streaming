@@ -73,7 +73,7 @@
     <label class="field-label" for="username">Joining as</label>
     <input id="username" readonly maxlength="40" autocomplete="nickname">
     <label class="field-label" for="preferredLanguage">My language</label>
-    <div class="select-wrap"><svg class="ic"><use href="#i-globe"/></svg><select id="preferredLanguage" aria-describedby="languageHint"><option value="auto">Arabic + English (mixed)</option><option value="ar">Arabic</option><option value="en">English</option></select></div>
+    <div class="select-wrap"><svg class="ic"><use href="#i-globe"/></svg><select id="preferredLanguage" aria-describedby="languageHint"><option value="auto">Arabic + English (mixed)</option><option value="apc_Arab">Lebanese / Levantine Arabic</option><option value="arb_Arab">Modern Standard Arabic</option><option value="eng_Latn">English</option></select></div>
     <p id="languageHint" class="hint left">The language you speak and want to hear. Captions use it.</p>
     <button class="link-btn" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio settings</button>
     <label class="sr-only" for="room">Room</label><input id="room" class="sr-only" readonly maxlength="48" tabindex="-1">
@@ -138,9 +138,10 @@
     </section>
     <section class="pane" id="pane-captions" aria-label="Meeting transcription">
       <div class="cap-head">
-        <strong id="transcriptionStatus" role="status">Transcription needs server setup.</strong>
+        <strong id="transcriptionStatus" role="status">Transcription stopped</strong>
+        <p id="transcriptionService" class="muted">Speech is recognized on each participant’s own computer.</p>
         <label class="field-label" for="transcriptionLanguage">My speech language</label>
-        <select id="transcriptionLanguage"><option value="auto">Arabic + English (automatic)</option><option value="ar">Arabic</option><option value="en">English</option></select>
+        <select id="transcriptionLanguage"><option value="auto">Arabic + English (mixed)</option><option value="apc_Arab">Lebanese / Levantine Arabic</option><option value="arb_Arab">Modern Standard Arabic</option><option value="eng_Latn">English</option></select>
         <div class="row">
           <button id="transcriptionStart" class="primary small" hidden disabled>Start transcription</button>
           <button id="transcriptionStop" class="secondary" hidden>Stop transcription</button>
@@ -202,7 +203,7 @@
   <div class="modal-actions"><button id="recordDecline" class="secondary">Decline</button><button id="recordAllow" class="primary">Allow recording</button></div></div>
 </div>
 <div id="transcriptionConsent" class="modal" role="dialog" aria-modal="true" aria-labelledby="transcriptionConsentTitle" hidden>
-  <div class="modal-card"><span class="modal-icon"><svg class="ic"><use href="#i-cc"/></svg></span><h2 id="transcriptionConsentTitle">Live transcription</h2><p>The host wants to transcribe everyone’s microphones on the meeting server. The text is shared with everyone in this call.</p>
+  <div class="modal-card"><span class="modal-icon"><svg class="ic"><use href="#i-cc"/></svg></span><h2 id="transcriptionConsentTitle">Live transcription</h2><p>The host wants to transcribe everyone’s microphones. Your speech is recognized on your own computer by its local speech service; only the text is sent, and it is shared with everyone in this call.</p><p id="transcriptionConsentNote" class="warning" role="alert"></p>
   <div class="modal-actions"><button id="transcriptionDecline" class="secondary">Decline</button><button id="transcriptionAllow" class="primary">Allow transcription</button></div></div>
 </div>
 <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="audioHeading" hidden>

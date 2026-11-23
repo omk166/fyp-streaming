@@ -10,11 +10,13 @@ import * as mediasoup from 'mediasoup';
 import { createAuth } from './auth.js';
 import { createRoomAccess } from './rooms.js';
 import { createRoomRecording } from './recording.js';
-import { createTranscription, createTranscriber } from './transcription.js';
+import { createTranscription } from './transcription.js';
 import { createWhiteboard } from './whiteboard.js';
 import { privateMessage } from './chat.js';
 import { createAudioTest } from './audio-test.js';
-const transcribe = createTranscriber();
+// Transcription runs on each participant's computer; pages send audio to this local speech service
+// (speech/service.py) and only text to this server. Override for tests or a non-default port.
+const speechService = new URL(process.env.LOCAL_SPEECH_URL || 'http://127.0.0.1:8765').origin;
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 3000);
@@ -43,7 +45,7 @@ async function getRoom(id) {
     const room = { router: await worker.createRouter({ mediaCodecs }), peers: new Set(), activeSpeaker: null, board: { strokes: [], index: new Map(), points: 0, frozen: new Map() } };
     room.whiteboard = createWhiteboard();
     room.recording = createRoomRecording({ peers: room.peers, publish: data => broadcast(room, null, 'recordingState', data) });
-    room.transcription = createTranscription({ peers: room.peers, transcribe, publish: (event, data) => broadcast(room, null, event, data) });
+    room.transcription = createTranscription({ peers: room.peers, publish: (event, data) => broadcast(room, null, event, data) });
     room.audioLevels = await room.router.createAudioLevelObserver({ maxEntries: 1, threshold: -65, interval: 300 });
     room.audioLevels.on('volumes', volumes => {
       const producer = volumes[0]?.producer;
@@ -78,7 +80,7 @@ app.get(['/', '/index.html', '/home'], auth.requireSession, (req, res) => {
   res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/home.html', import.meta.url)));
 });
 app.get('/meeting', auth.requireSession, (_req, res) => res.set('Cache-Control', 'no-store').sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
-app.use(createAudioTest({ auth, transcribe }));
+app.use(createAudioTest({ auth, speechService }));
 app.use(express.static('public', { index: false }));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = tls ? createHttpsServer(tls, app) : createServer(app);
@@ -144,7 +146,7 @@ async function action(peer, method, data) {
     room.recording.membershipChanged();
     room.transcription.membershipChanged();
     broadcast(peer.room, peer, 'participant', participant(peer));
-    return { whiteboard: room.whiteboard.snapshot(), transcription: room.transcription.snapshot(), room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
+    return { whiteboard: room.whiteboard.snapshot(), transcription: room.transcription.snapshot(), speechService, room: access, recording: room.recording.snapshot(), activeSpeaker: peer.room.activeSpeaker, routerRtpCapabilities: peer.room.router.rtpCapabilities, peerId: peer.id, username: peer.username, participants: [...peer.room.peers].map(participant), board: peer.room.board.strokes, frozen: [...peer.room.board.frozen].map(([target, image]) => ({ target, image })) };
   }
   const room = peer.room;
   if (!room) throw Error('Join first');
@@ -163,7 +165,7 @@ async function action(peer, method, data) {
     case 'transcriptionRequest': return room.transcription.request(peer);
     case 'transcriptionConsent': return room.transcription.consent(peer, data.id, data.allow);
     case 'transcriptionStop': return room.transcription.stop(peer, data.id);
-    case 'transcriptionAudio': return room.transcription.audio(peer, data);
+    case 'transcriptionText': return room.transcription.text(peer, data);
     case 'transcriptionFlushed': return room.transcription.flushed(peer, data.id);
     case 'transcriptionFailed': return room.transcription.failed(peer, data.id);
     case 'recordingRequest': return room.recording.request(peer);

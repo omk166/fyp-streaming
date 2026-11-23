@@ -35,8 +35,8 @@ label{display:inline-block;margin-right:14px}fieldset{border:1px solid #70849c;b
 
 
 <section class="panel" aria-labelledby="recHeading"><h2 id="recHeading">3 · Recognition check (word error rate)</h2>
-<p id="werDisclosure">This sends the A/B recordings you made above to this meeting server's speech recognizer, the same path live transcription uses. The speech parts are cut into segments of at most 8 seconds (16 kHz mono WAV) and uploaded one by one; the server keeps them in memory only while recognising them and stores nothing. No other audio or data from this page is uploaded. Each transcript is compared with the script above.</p>
-<button id="werRun" disabled>Upload my recordings for the recognition check</button><p id="werStatus" role="status"></p></section>
+<p id="werDisclosure">This sends the A/B recordings you made above to the speech service on your own computer (Omnilingual ASR, started with <code>npm run speech</code>), the same recognizer live transcription uses. The speech parts are cut into segments of at most 8 seconds (16 kHz mono WAV) and recognized one by one; the service keeps them in memory only while recognising them and stores nothing. Nothing from this page is uploaded to the meeting server. Each transcript is compared with the script above.</p>
+<button id="werRun" disabled>Run the recognition check on this computer</button><p id="werStatus" role="status"></p></section>
 <section class="panel" aria-labelledby="werHeading"><h2 id="werHeading">4 · Results</h2>
 <p class="note">Only values measured on this computer are shown. Anything that could not be measured says why. Published model figures are deliberately not used here.</p>
 <div class="table-wrap"><table><thead><tr><th scope="col">Measurement</th><th scope="col">Off (raw)</th><th scope="col">Browser (built-in)</th><th scope="col">Ours</th></tr></thead><tbody id="results"></tbody></table></div>

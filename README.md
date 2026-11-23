@@ -27,10 +27,12 @@ after leaving, until the next meeting replaces them, sign-out, or tab closure.
 This uses temporary browser session storage, not a server transcript archive.
 Existing local recording downloads finish before the redirect.
 
-Live Arabic/English transcription is an optional server-side prototype with
-separate unanimous consent, speaker labels and TXT/SRT downloads. It remains
-disabled until the private speech worker is configured. See the
-[Dubai speech setup and current limits](speech/README.md).
+Live Arabic/English transcription runs on each participant's own computer, with
+separate unanimous consent, speaker labels and TXT/SRT downloads. Each participant
+runs a local Omnilingual ASR service (`omniASR_CTC_300M_v2` by default, `npm run speech`); the page
+sends it their microphone's speech segments and sends only the recognized text to the
+meeting server, which never receives audio and needs no speech setup. See
+[local transcription setup and current limits](speech/README.md).
 
 For different devices on the same Wi-Fi, see [the HTTPS LAN demo setup](LAN-DEMO.md). It includes certificate trust, scoped firewall rules and a launcher. A Windows laptop and MacBook call was confirmed working by the project owner on October 31, 2026; this is a functional check, not a measured multi-device performance trial.
 
@@ -152,12 +154,12 @@ Open `/audio-test` (signed in, like the meeting) or follow the link in **Audio i
 
 1. **A/B recording:** one take per mode of the on-screen script, with a 3-second silent lead-in. Clips play back side by side with level meters and a level graph, and download as WAV. Tick *Play a noise clip* for the noise test (generated pink noise played through the speakers but kept out of the echo reference), or record in your own noisy room. The speech-to-noise estimate compares speech frames with the lead-in noise.
 2. **Echo test (speakers, not headphones):** a generated speech-like clip goes through a local WebRTC loopback and plays like a remote participant (routed into the echo canceller for Ours, exactly as in a meeting) while you stay silent. It reports the residual echo level, the reduction below the Off run, and the in-run ERLE where an unprocessed copy was captured at the same time (always for Ours; for Browser only if the browser allows a parallel raw capture). Results are marked invalid unless the Off recording actually correlates with the played clip and is at least 10 dB above the room noise.
-3. **Recognition check:** each take is cut into speech segments exactly as live transcription does (16 kHz averaging plus `public/speech-buffer.js`). The segments go through `POST /api/audio-test/transcribe`, which uses the same transcriber queue as meetings (`transcription.js`; session, same-origin, one request at a time and a per-session limit). The page shows the word error rate against the script. It needs `TRANSCRIPTION_URL`; otherwise the page says the result was not measured.
+3. **Recognition check:** each take is cut into speech segments exactly as live transcription does (16 kHz averaging plus `public/speech-buffer.js`). The segments go to the speech service on the tester's own computer (`npm run speech`), the recognizer live transcription uses, with the English hint `eng_Latn`; nothing is uploaded to the meeting server. The page shows the word error rate against the script. If the local service is not running or not ready, the page says why and that the result was not measured.
 4. **Results table:** settings read back, speech level, speech-to-noise, residual echo/ERLE, WER, processing time per frame, CPU (worker busy share of real time; Compute Pressure state where the browser offers it) and added latency (track to track against the raw microphone). Anything not measurable says why; published model figures are never used to fill gaps. *Download results* saves the table as JSON.
 
 ### Validation
 
-`npm test` (52 tests) includes `tests/audio-dsp.test.mjs` and `tests/audio-modes.test.mjs`. They cover the FFT, resampling (pass band, alias rejection, chunk-size independence), delay estimation, DTLN-aec framing and its 384-sample delay, measured chain delay and reference alignment, speech-to-noise, WER, mode constraints, saved preferences, settings read-back and the recognition endpoint's checks. `npm run test:audio-ui` (`scripts/audio-processing.mjs`, Chrome by default, `BROWSER_CHANNEL=msedge` for Edge) runs against a local server on port 3100. It uses Chrome's fake devices with output muted. Set `SPEECH_TEST_WAV` to a spoken 48 kHz WAV for the speech checks; add `NOISE_DB=10` to feed the fake microphone that speech plus pink noise. Its three parts:
+`npm test` (52 tests) includes `tests/audio-dsp.test.mjs` and `tests/audio-modes.test.mjs`. They cover the FFT, resampling (pass band, alias rejection, chunk-size independence), delay estimation, DTLN-aec framing and its 384-sample delay, measured chain delay and reference alignment, speech-to-noise, WER, mode constraints, saved preferences, settings read-back and the test page's local speech service settings. `npm run test:audio-ui` (`scripts/audio-processing.mjs`, Chrome by default, `BROWSER_CHANNEL=msedge` for Edge) runs against a local server on port 3100. It uses Chrome's fake devices with output muted. Set `SPEECH_TEST_WAV` to a spoken 48 kHz WAV for the speech checks; add `NOISE_DB=10` to feed the fake microphone that speech plus pink noise. Its three parts:
 
 - An offline check through the real worker: the official DTLN-aec sample recordings, and (with `SPEECH_TEST_WAV`) DeepFilterNet3 on that speech plus pink noise at 5 dB SNR.
 - Live switching in a two-participant call, with the read-back checked after every switch and the other participant's received audio checked to keep flowing from the same consumer.

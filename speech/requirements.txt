@@ -1,1 +1,6 @@
-faster-whisper==1.2.1
+# Local speech service (speech/service.py). Python 3.10 or 3.11; also needs libsndfile (macOS: brew install libsndfile).
+omnilingual-asr==0.2.0
+silero-vad==6.3
+# fairseq2 0.6 pins torch 2.8.0 and numpy<2; left alone pip picks newer torchaudio/pyarrow that do not work with them.
+torchaudio==2.8.0
+pyarrow==20.0.0

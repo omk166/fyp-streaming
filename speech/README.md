@@ -1,181 +1,143 @@
-# Server transcription prototype
+# Local transcription (Omnilingual ASR)
 
-The Node meeting server forwards each consenting browser's microphone as mono
-16kHz PCM WAV to a private faster-whisper service on the **same Dubai server**.
-No speech model runs in the browser. Screen audio is excluded. Authenticated
-meeting identities supply speaker labels; these do not identify other people
-speaking near the same microphone. Audio exists in memory only; no audio or
-transcript database is created. Participants receive the text and can export it.
+Live transcription runs on **each participant's own computer**. The meeting page cuts
+the microphone into speech segments (AudioWorklet, at most 8 s, mono 16 kHz) and sends
+them over loopback to a local speech service, `speech/service.py`. The service runs
+Meta's [Omnilingual ASR](https://github.com/facebookresearch/omnilingual-asr) model
+`omniASR_CTC_300M_v2` by default (a 1.2 GiB download). The page then sends **only the recognized text** to the meeting
+server. The server checks consent, stamps the authenticated speaker name and shares the
+text with the room. No audio reaches the meeting server, and the server needs no speech
+setup.
 
-## Local Windows microphone test
+Captions appear once your own computer has recognized a segment. On an Apple M4, an
+8-second segment took 0.1–0.5 s with the default model. On a slow machine they lag behind the speech, and the transcript pane says how
+much audio is still waiting.
 
-From the `app` folder, first install once:
+## Install (once per computer)
 
-```powershell
-python -m venv .venv-speech
-.\.venv-speech\Scripts\python.exe -m pip install -r speech/requirements.txt
-```
-
-Start a separate local meeting server and the real CPU recognizer:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File speech/run-local.ps1
-```
-
-This uses the multilingual `base` model for a lightweight local check. Its first
-launch downloads model weights; check `http://127.0.0.1:8765/health` before testing.
-Use `-Model small` to compare a larger model after stopping the first test.
-Local tests use four CPU threads; override with `-CpuThreads 2` if needed.
-The launcher prints the process IDs and exact stop command. Logs and separate
-test accounts live under ignored `data/transcription-local/`; `.env` is unchanged.
-
-1. Open `http://127.0.0.1:3198` in Chrome and create a test account. A guest
-   cannot create a room or request transcription.
-2. Create a room and join, allowing microphone and camera access. Leave
-   **Synthetic test media** unchecked; it produces a tone, not speech.
-3. Choose **Request transcription & agree**. With only you in the room, capture
-   starts immediately. Speak English, Arabic, then switch within a sentence.
-4. Choose your speech language: Arabic + English automatically compares only those
-   two languages; Arabic or English pins the decoder for a single-language test.
-5. Stop and wait for **Finishing the remaining speech** to complete, then download
-   TXT and SRT. Withdraw consent cancels pending speech immediately instead.
-6. For consent testing, open the invitation in an Incognito window, join as a
-   guest, and approve the request there too. Use headphones and avoid playing
-   the same microphone through speakers.
-
-`scripts/transcription-real.mjs` can additionally feed a supplied spoken WAV
-through Chrome's microphone and the actual worker. It requires the local servers
-above; set `SPEECH_TEST_WAV` to the WAV path. Its English smoke assertions do not
-measure Arabic recognition accuracy. Results are saved under ignored
-`data/transcription-test/`.
-
-Local smoke check on November 15, 2026: the multilingual `base` CPU/int8 model
-recognized "We are testing the meeting transcription system." through Chrome's
-file-backed microphone, the app's AudioWorklet and the actual Python service.
-The first matching caption arrived about 7.9 seconds after requesting
-transcription; SRT export passed with no browser errors. This is one English
-synthetic-voice sample, not a latency benchmark or an Arabic accuracy result.
-The real test uncovered a PyAV compatibility issue; the worker now reads the
-validated WAV's PCM directly into a normalized float array for inference.
-
-Continuous-speech regression on the same date: the updated queue and speech
-segmentation captured all six sentences (82 reference words) of a longer English
-sample across six uploads. The normalized transcript matched the complete
-reference, with no queue warnings or browser errors, and SRT export passed.
-This addresses lost audio while inference is busy; it does not establish Arabic
-accuracy. Unit checks cover sample continuity, quiet speech, missing input
-channels during silence, cancellation, normal-stop draining and language policy.
-The final rerun retained all six sentences live before Stop, with one word
-substitution ("planned" became "plan"). No segments or warnings were lost.
-An additional reproduced bug discarded valid sentences when model timestamps
-extended beyond their clips (8.08s reported for 5.66s of audio). The server now
-clamps those timestamps while preserving the recognized text, with regression
-coverage for that case.
-
-## Deployment (friend with server access)
-
-From the repository directory on the Linux server:
+Requirements:
+- macOS on Apple silicon, or Linux. Windows has no fairseq2 build, so run the service
+  inside WSL2 (Ubuntu) with the Linux steps. WSL forwards `127.0.0.1:8765` to Windows
+  (not tested here).
+- Python 3.11 or 3.10. omnilingual-asr 0.2.0 declares `<=3.12`, and pip reads that as
+  excluding 3.12.1 and later.
+- About 4 GB of disk for the Python packages and the default model (more for a larger
+  model, see below).
 
 ```sh
-python3 -m venv .venv-speech
-.venv-speech/bin/python -m pip install -r speech/requirements.txt
-WHISPER_MODEL=small WHISPER_DEVICE=cpu WHISPER_COMPUTE_TYPE=int8 \
-  WHISPER_CPU_THREADS=2 .venv-speech/bin/python speech/service.py
+npm run speech:install
 ```
 
-First launch downloads the selected model. The service becomes reachable only
-after loading the model. In a second terminal:
+This creates `.venv-omniasr/` (git-ignored) and installs `speech/requirements.txt`.
+Use `PYTHON=/path/to/python3.11 npm run speech:install` if Python 3.11 is not on your PATH.
+
+## Start
 
 ```sh
-curl http://127.0.0.1:8765/health
+npm run speech
 ```
 
-Set this in the meeting server's private `.env`, then rebuild and restart its
-existing service:
+The service listens on `http://127.0.0.1:8765` (this computer only). The first start
+downloads the model (1.2 GiB for the default) from `dl.fbaipublicfiles.com` into
+`~/.cache/fairseq2/assets/`. Later starts only load it. `/health` reports `loading`, then
+`ready`. Until it is ready the meeting page says so and does not let you start or agree
+to transcription.
 
-```dotenv
-TRANSCRIPTION_URL=http://127.0.0.1:8765/transcribe
-```
+**Deployed meeting site:** pages on `localhost`/`127.0.0.1` are always allowed. Any other
+site must be named, because the service refuses requests from other websites:
 
 ```sh
-npm ci
-npm run build
-sudo systemctl restart fyp-streaming
+npm run speech -- --allow-origin https://your-meeting-site.example
 ```
 
-Run the Python command under your service supervisor for persistent use. A
-template is provided in `speech/fyp-speech.service`; replace its user and paths,
-install it into `/etc/systemd/system`, then enable/start `fyp-speech`.
-Keep port 8765 private; do not publish it through your reverse proxy or firewall.
-These instructions assume Node and Python run directly on the same host.
-The current Docker Compose deployment does not include this worker; container
-loopback will not reach the host worker.
+The meeting page prints this exact command, with its own address, when the service
+refuses it. Chrome may also ask once for permission to reach apps on this device; allow
+it. Use Chrome, Edge or Firefox.
 
-`WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`,
-`WHISPER_CPU_THREADS`, and `WHISPER_PORT` configure Python. Start with the
-multilingual `small` CPU/int8 configuration as a benchmark, not an accuracy or
-latency guarantee. Do not use an English-only `.en` model. If an NVIDIA GPU is
-available, evaluate `large-v3` with `cuda` / `float16` after installing compatible
-CUDA libraries per [faster-whisper's documentation](https://github.com/SYSTRAN/faster-whisper).
-Automatic mode compares Arabic and English language probabilities for each
-utterance, then explicitly sets that decoding language with `multilingual=False`
-to prevent unrestricted redetection. Within-sentence language switching remains
-a model accuracy limitation; larger models need evaluation with real speech.
-`WHISPER_BEAM_SIZE` can increase decoding search (default 1 for CPU speed).
+Options (flags or environment variables):
 
-## Behavior and current limits
+| Flag | Env | Default |
+| --- | --- | --- |
+| `--device` | `SPEECH_DEVICE` | `auto`: CUDA, else Apple GPU (`mps`), else CPU |
+| `--dtype` | `SPEECH_DTYPE` | `auto`: bfloat16 on CUDA, float16 on `mps`, float32 on CPU |
+| `--model` | `SPEECH_MODEL` | `omniASR_CTC_300M_v2` |
+| `--port` | `SPEECH_PORT` | `8765` (pages look there unless the meeting server sets `LOCAL_SPEECH_URL`) |
+| `--allow-origin` | `SPEECH_ALLOWED_ORIGINS` (comma-separated) | none |
 
-- Owner requests transcription independently of video recording. Everyone must
-  agree; decline/withdrawal stops processing and discards pending results. A new
-  arrival stops active transcription and requires fresh consent. Requests expire
-  after two minutes; sessions end after 30 minutes, matching recording policy.
-- The AudioWorklet segments speech on roughly 640ms pauses, with a short lead-in
-  and an eight-second cap for continuous speech. Quiet speech uses a lower energy
-  threshold; Python VAD rejects silence before attempting language detection.
-  There are no speculative word-by-word partial captions yet.
-- Browser AudioWorklet requires HTTPS (or localhost). Muting clears the partial
-  microphone buffer; capture never stops the call's original microphone track.
-- One inference runs globally at a time. Up to 24 requests are buffered in memory
-  rather than dropped while busy. Pending segment count and audio duration are
-  visible. Slower-than-real-time processing increases caption delay; queue
-  overflow and service failures produce persistent warnings. Each running request
-  times out after 120 seconds. Sustained overload still needs faster hardware, a
-  smaller model or more inference capacity.
-- Normal Stop flushes the partial microphone audio from every participant and
-  waits for accepted jobs before finishing. A missing upload acknowledgement
-  times out after ten seconds with a warning. Consent withdrawal, owner departure,
-  new arrivals and room shutdown cancel queued results immediately. A decoder
-  already running cannot be interrupted; its result is suppressed after cancel.
-- Export contains collected captions, without a second full-recording accuracy
-  pass. Eight-second cuts can still split words; we do not promise verbatim
-  recognition. Longer mixed Lebanese Arabic/English recordings need evaluation.
-- The latest 2,000 segments are held in room/browser memory. TXT and SRT exports
-  sort by capture time. New sessions replace the previous transcript. Download
-  before closing; room destruction or server restart loses server history.
-- Timestamps are approximate browser wall-clock offsets; sync device clocks for
-  comparison. Arabic paragraphs use automatic direction. No translation occurs.
-- No Dubai deployment has been performed. Local tests include a real CPU model
-  with English speech and a fake backend for two-participant consent. Arabic
-  accuracy has not been established.
+## Models
 
-## Acceptance check on Dubai
+| Model | Download | Language choice |
+| --- | --- | --- |
+| `omniASR_CTC_300M_v2` (default) | 1.21 GiB | ignored: the model detects the language itself |
+| `omniASR_CTC_1B_v2` | 3.63 GiB | ignored |
+| `omniASR_LLM_300M_v2` | 6.08 GiB | used |
+| `omniASR_LLM_1B_v2` | 8.49 GiB | used |
 
-Local automated checks (the browser check starts its own disposable server and
-fake inference endpoint; it does not download or run a model):
+Choose another one with `npm run speech -- --model omniASR_LLM_1B_v2`. The CTC 300M
+model is the smallest and fastest. Nobody has measured how much the larger models
+improve our Arabic speech. The first start with a new model downloads it. fairseq2's downloader can
+stall on slow connections without timing out; if the progress bar stops moving, stop
+the service and start it again (this restarts that download from zero).
+
+## Languages
+
+Each participant picks their language in the lobby (**My language**) or the transcript
+pane (**My speech language**); the two stay in sync. The choice only matters with an
+LLM model. The CTC default ignores it, and the transcript pane says so. With an LLM
+model, the choice is passed to the recognizer as an Omnilingual language code:
+
+- **Arabic + English (mixed)** (no hint): the model chooses the language. Use it for mixed
+  Arabic/English speech. Omnilingual recommends a hint when one applies, so check the
+  quality on your own speech.
+- **Lebanese / Levantine Arabic** `apc_Arab`, **Modern Standard Arabic** `arb_Arab`,
+  **English** `eng_Latn`.
+
+## What the service does with audio
+
+- It accepts mono 16 kHz 16-bit PCM WAV up to 40 s (the model's limit). The page sends
+  at most 8 s per segment.
+- Silero VAD checks every segment first. A segment with no speech never reaches the
+  model, because an LLM decoder given only noise can invent a sentence.
+- It recognizes one segment at a time, in memory, and stores nothing. The log records
+  durations and processing time only, never audio or text.
+- It answers only on loopback, checks the `Host` header (against DNS rebinding) and the
+  `Origin` header (allowed sites only), and handles CORS and Private Network Access
+  preflights.
+
+## Meeting behaviour and limits
+
+- The owner requests transcription and everyone must agree, as before. Agreeing (or
+  starting) first checks that your local service is ready. Decline or withdrawal stops at
+  once and discards your computer's waiting segments. A new arrival stops the session and
+  needs fresh consent. Requests expire after two minutes, and sessions end after 30
+  minutes.
+- Segments are recognized in order. Up to 48 segments (about six minutes of continuous
+  speech) can wait. Beyond that the page skips speech and warns you.
+- **Stop** flushes each computer's partial segment. The session ends when every
+  participant's computer has transcribed and sent its remaining speech, or after two
+  minutes with a warning that the last sentences may be missing.
+- Muting clears the partial segment, and speech captured while muted is never
+  recognized. Screen-share audio is not transcribed.
+- The text is produced on participants' computers. The server attributes each line to
+  the authenticated sender, but cannot check that the text matches what they said (as
+  with chat).
+- Omnilingual ASR returns text without word timings. Each caption spans its segment's
+  capture time, so TXT/SRT timestamps are approximate to within one segment (≤ 8 s).
+  Eight-second cuts can still split words.
+- The latest 2,000 lines are kept in room and browser memory. Download TXT/SRT before
+  leaving.
+
+## Checks
 
 ```sh
-npm run build
-npm run test:transcription
-npm run test:transcription-ui
+npm run test:transcription      # server consent/relay rules, local client, segmentation
+npm run test:transcription-ui   # two browsers against a fake local service (no model needed)
+npm run test:speech             # recognition policy, origin/host checks (needs .venv-omniasr)
+SPEECH_TEST_WAV=path/to/spoken.wav npm run test:transcription-real   # real model, needs npm run speech
 ```
 
-The browser check uses installed Google Chrome by default; set `BROWSER_CHANNEL`
-to another installed Playwright browser channel if necessary.
-
-Use two different signed-in identities and real microphones over HTTPS. Check
-that nobody sends audio before both agree, Arabic and English appear with the
-correct names, mute prevents transcription, and TXT/SRT preserve both scripts.
-Try decline, withdrawal, owner departure, a new arrival, silence, overlapping
-speech and an unavailable worker. Compare against a manually transcribed mixed
-Lebanese Arabic/English sample; measure caption delay and CPU/RAM during a call.
-Revisit model size, buffer boundaries and scheduling based on those measurements.
+`test:transcription-real` feeds a spoken WAV through Chrome's microphone, the app and the
+running local service. It asserts that no audio reached the meeting server and writes
+`data/transcription-test/result.json`. Its default expected words are English. Set
+`SPEECH_EXPECT_WORDS` and `SPEECH_LANGUAGE` for other samples. It does not measure
+accuracy.

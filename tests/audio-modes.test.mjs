@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { browserConstraints, normalizePrefs, loadPrefs, savePrefs, compareSettings, readSettings, describe, DEFAULT_PREFS, STORAGE_KEY } from '../client/audio/modes.js';
 import { createAudioTest } from '../audio-test.js';
-import { encodeWav } from '../client/audio/dsp.js';
 
 test('modes map onto browser constraints: Off and Ours turn everything off, Browser follows the switches', () => {
   const none = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
@@ -40,36 +39,20 @@ test('settings read-back reports ignored and unreported constraints', () => {
 
 async function server(options) {
   const app = express();
-  const auth = { getSession: req => (req.headers['x-test-session'] ? { hash: req.headers['x-test-session'] } : null), sameOrigin: req => req.headers.origin === 'http://test', requireSession: (_req, _res, next) => next() };
+  const auth = { getSession: req => (req.headers['x-test-session'] ? { hash: req.headers['x-test-session'] } : null), requireSession: (_req, _res, next) => next() };
   app.use(createAudioTest({ auth, ...options }));
   const listener = app.listen(0); await new Promise(r => listener.once('listening', r));
-  const url = `http://127.0.0.1:${listener.address().port}`;
-  const post = (body, headers = {}) => fetch(`${url}/api/audio-test/transcribe`, { method: 'POST', body, headers: { 'x-test-session': 's1', origin: 'http://test', 'content-type': 'audio/wav', ...headers } });
-  return { url, post, close: () => listener.close() };
+  return { url: `http://127.0.0.1:${listener.address().port}`, close: () => listener.close() };
 }
 
-test('recognition check endpoint: session, origin, configuration, format and rate limits', async () => {
-  const calls = [];
-  const transcribe = Object.assign(async (wav, options) => { calls.push({ bytes: wav.length, ...options }); return [{ text: ' hello ' }, { text: 'world' }, { bad: 1 }]; }, { enabled: true });
-  const s = await server({ transcribe, maxRequests: 2 });
+test('audio test page: recognition goes to the local speech service, never this server', async () => {
+  const s = await server({ speechService: 'http://127.0.0.1:8765' });
   try {
-    const wav = Buffer.from(encodeWav(new Float32Array(16000), 16000));
-    assert.equal((await s.post(wav, { 'x-test-session': '' })).status, 401);
-    assert.equal((await s.post(wav, { origin: 'http://evil' })).status, 403);
-    assert.equal((await s.post(wav, { 'content-type': 'application/json' })).status, 415);
-    assert.equal((await s.post(wav, { 'x-speech-language': 'fr' })).status, 400);
-    const ok = await s.post(wav, { 'x-speech-language': 'en' });
-    assert.equal(ok.status, 200); assert.deepEqual(await ok.json(), { text: 'hello world' });
-    assert.deepEqual(calls, [{ bytes: wav.length, language: 'en' }]);
-    assert.equal((await s.post(Buffer.from(encodeWav(new Float32Array(16000), 48000)))).status, 400, 'only 16 kHz mono PCM');
-    assert.equal((await s.post(Buffer.alloc(300000))).status, 429, 'over the per-session limit');
-    assert.equal((await s.post(wav, { 'x-test-session': 's2' })).status, 200, 'other sessions unaffected');
-    assert.equal((await s.post(Buffer.alloc(300000), { 'x-test-session': 's3' })).status, 413);
+    assert.equal((await fetch(`${s.url}/api/audio-test/status`)).status, 401);
     const status = await fetch(`${s.url}/api/audio-test/status`, { headers: { 'x-test-session': 's1' } });
-    assert.deepEqual(await status.json(), { transcription: true });
+    assert.deepEqual(await status.json(), { speechService: 'http://127.0.0.1:8765' });
+    const page = await fetch(`${s.url}/audio-test`, { headers: { 'x-test-session': 's1' } });
+    assert.match(page.headers.get('content-security-policy'), /connect-src 'self' http:\/\/127\.0\.0\.1:8765;/);
+    assert.equal((await fetch(`${s.url}/api/audio-test/transcribe`, { method: 'POST', headers: { 'x-test-session': 's1' } })).status, 404, 'no server-side recognition endpoint');
   } finally { s.close(); }
-  const disabled = await server({ transcribe: Object.assign(async () => [], { enabled: false }) });
-  try {
-    assert.equal((await disabled.post(Buffer.from(encodeWav(new Float32Array(16000), 16000)))).status, 503);
-  } finally { disabled.close(); }
 });

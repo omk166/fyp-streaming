@@ -9,7 +9,7 @@ const base = 'http://127.0.0.1:3196', temp = await mkdtemp(join(tmpdir(), 'fyp-h
 let browser, server, logs = '';
 try {
   server = spawn(process.execPath, ['server.js'], { env: { ...process.env, HOST: '127.0.0.1', PORT: '3196', MEDIA_PORT: '41996',
-    MEDIA_IP: '127.0.0.1', APP_ORIGIN: base, SCREEN_PEN: '0', TRANSCRIPTION_URL: '', TLS_CERT: '', TLS_KEY: '', AUTH_DB_PATH: join(temp, 'auth.sqlite') }, stdio: ['ignore', 'pipe', 'pipe'] });
+    MEDIA_IP: '127.0.0.1', APP_ORIGIN: base, SCREEN_PEN: '0', TLS_CERT: '', TLS_KEY: '', AUTH_DB_PATH: join(temp, 'auth.sqlite') }, stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', data => { logs += data; }); server.stderr.on('data', data => { logs += data; });
   for (let i = 0; i < 100; i++) {
     if (await fetch(base + '/health').then(r => r.ok).catch(() => false)) break;

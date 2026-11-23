@@ -142,7 +142,11 @@ export function setupUI({ $ }) {
 
   // ---- Preferred language: chosen in the lobby, remembered on this device, and used as the caption language.
   // (When translated captions/speech arrive, this is also the language people will hear.)
-  try { const saved = localStorage.getItem('preferred-language'); if (saved && [...$('preferredLanguage').options].some(o => o.value === saved)) $('preferredLanguage').value = saved; } catch {}
+  // Values are Omnilingual ASR codes; 'ar'/'en' were saved before transcription moved to Omnilingual ASR.
+  try {
+    const stored = localStorage.getItem('preferred-language'), saved = { ar: 'apc_Arab', en: 'eng_Latn' }[stored] || stored;
+    if (saved && [...$('preferredLanguage').options].some(o => o.value === saved)) $('preferredLanguage').value = saved;
+  } catch {}
   const syncLanguage = (from, to) => {
     $(to).value = $(from).value;
     try { localStorage.setItem('preferred-language', $(from).value); } catch {}

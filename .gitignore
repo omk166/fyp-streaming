@@ -9,6 +9,7 @@ artifacts/private/
 *.log
 __pycache__/
 .venv-speech/
+.venv-omniasr/
 certs/
 data/
 .env.*
