@@ -25,7 +25,8 @@ const speech = createServer(async (req, res) => {
   const wav = Buffer.concat(chunks);
   assert.equal(wav.toString('ascii', 0, 4), 'RIFF'); assert.equal(wav.readUInt32LE(24), 16000);
   requests++; origins.add(origin); languages.add(req.headers['x-speech-language']);
-  res.end(JSON.stringify({ text: 'مرحبا hello' }));
+  // A different ending each time, like real windows: the page drops words that overlapping windows repeat.
+  res.end(JSON.stringify({ text: `مرحبا hello ${requests}` }));
 });
 await new Promise(resolve => speech.listen(0, '127.0.0.1', resolve));
 try {

@@ -39,9 +39,10 @@ export async function createOursPipeline({ source, echo, noise, onStats = () => 
   };
   let out = null;
   try {
-    await ctx.resume();
+    // Neither step has a deadline of its own; a join must not wait on them forever.
+    await timeout(ctx.resume(), 10000, 'the browser did not start audio within 10 s');
     if (ctx.sampleRate !== 48000) throw Error(`the browser opened audio at ${ctx.sampleRate} Hz instead of 48000 Hz`);
-    try { await ctx.audioWorklet.addModule(assets.worklet); }
+    try { await timeout(ctx.audioWorklet.addModule(assets.worklet), 30000, 'it did not load within 30 s'); }
     catch (error) { throw Error(`the audio worklet could not load (${error.message}); run "npm run build"`); }
     worker = new Worker(assets.worker);
     const settings = source.getSettings?.() || {};

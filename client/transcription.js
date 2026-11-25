@@ -1,4 +1,5 @@
 import { createLocalSpeech, speechProblem } from './local-speech.js';
+import { createMerger } from './transcript-merge.js';
 
 export function timestamp(ms, srt = false) {
   const n = Math.max(0, Math.floor(ms));
@@ -10,14 +11,16 @@ export function exportTranscript(segments, format) {
     : `[${timestamp(s.start)}] ${s.username}: ${s.text}`).join('\n');
 }
 
-// Speech waiting for this computer's recognizer: 48 segments is up to about six minutes of continuous speech.
-const MAX_QUEUE = 48;
+// Speech waiting for this computer's recognizer: 120 windows is about six minutes of continuous speech
+// (each 4 s window brings 3 s of new speech).
+const MAX_QUEUE = 120;
 
 // Live transcription. The microphone is cut into speech segments in an AudioWorklet, recognized by the speech
 // service on this computer, and only the text goes to the meeting server, which shares it with the room.
 export function setupTranscription({ $, state, rpc, microphone, notice, createSpeech = createLocalSpeech }) {
   let current = { phase: 'idle' }, segments = new Map(), ctx, source, capture, silent, generation = 0, starting = false, captureTrack = null;
   let speech = null, health = { status: 'unknown' }, healthTimer = null, queue = [], working = null, idleWaiters = [];
+  const merger = createMerger();
   const render = () => {
     const active = current.phase === 'recording', pending = current.phase === 'consent', finishing = current.phase === 'finishing', owner = state.room?.role === 'owner';
     $('transcriptionStatus').textContent = finishing ? 'Finishing: each computer is transcribing its remaining speech…' : active ? 'Transcription active' : pending ? 'Waiting for everyone to agree…' : 'Transcription stopped';
@@ -56,9 +59,14 @@ export function setupTranscription({ $, state, rpc, microphone, notice, createSp
       const job = queue.shift(), controller = new AbortController();
       working = { job, controller }; progress();
       try {
-        const text = await speech.transcribe(job.samples, job.language, controller.signal);
-        if (text && !controller.signal.aborted && job.id === current.id) await rpc('transcriptionText', { id: job.id, seq: job.seq, offset: job.offset, duration: job.duration, text });
+        const recognized = await speech.transcribe(job.samples, job.language, controller.signal);
+        if (controller.signal.aborted || job.id !== current.id) { merger.reset(); continue; }
+        // Overlapping windows repeat about a second of speech; show each word once.
+        const { text, joined } = merger.add(recognized, { seq: job.seq, overlapSamples: job.overlapSamples, samples: job.samples.length, continues: job.continues });
+        const end = job.offset + job.duration, start = Math.min(joined ? job.offset + job.overlapSamples / 16 : job.offset, end - 100);
+        if (text) await rpc('transcriptionText', { id: job.id, seq: job.seq, offset: start, duration: end - start, text });
       } catch (error) {
+        merger.reset();
         if (!controller.signal.aborted && job.id === current.id && current.phase !== 'idle') warning(`Some speech could not be transcribed: ${error.message}.`);
       }
     }
@@ -66,7 +74,7 @@ export function setupTranscription({ $, state, rpc, microphone, notice, createSp
     for (const resolve of idleWaiters.splice(0)) resolve();
   }
   const whenIdle = () => (working || queue.length ? new Promise(resolve => idleWaiters.push(resolve)) : Promise.resolve());
-  function cancelQueue() { queue = []; working?.controller.abort(); progress(); }
+  function cancelQueue() { queue = []; working?.controller.abort(); merger.reset(); progress(); }
   // Tell the server once every segment captured before Stop has been transcribed and sent.
   function finish(id) {
     whenIdle().then(() => { if (current.id === id && current.phase === 'finishing') return rpc('transcriptionFlushed', { id }); })
@@ -94,15 +102,15 @@ export function setupTranscription({ $, state, rpc, microphone, notice, createSp
       capture = new AudioWorkletNode(context, 'speech-capture');
       silent = context.createGain(); silent.gain.value = 0;
       source.connect(capture); capture.connect(silent); silent.connect(context.destination);
-      let seq = 0;
+      let seq = 0; merger.reset();
       const captureOffset = Math.max(0, Date.now() - current.startedAt);
       capture.port.onmessage = ({ data }) => {
         if (data.flushed) { stopCapture(); finish(id); return; }
-        const { samples, startSample } = data;
+        const { samples, startSample, overlapSamples = 0, continues = false } = data;
         const offset = captureOffset + startSample / 16, sequence = seq++;
         const muted = state.producers.find(p => p.appData.source === 'microphone')?.paused;
         if (muted || captureTrack?.readyState !== 'live' || token !== generation) return;
-        enqueue({ id, seq: sequence, offset, duration: samples.length / 16, samples, language: $('transcriptionLanguage').value });
+        enqueue({ id, seq: sequence, offset, duration: samples.length / 16, samples, overlapSamples, continues, language: $('transcriptionLanguage').value });
       };
     } catch (error) {
       stopCapture(); notice(`Transcription capture failed: ${error.message}`);

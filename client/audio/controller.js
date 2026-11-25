@@ -156,6 +156,8 @@ export function setupAudioProcessing({ $, event = () => {}, onActive = () => {} 
   return {
     // getUserMedia audio constraints for the join-time capture.
     constraints: () => browserConstraints(prefs),
+    // The mode the next join will start in (the lobby says when that is the slow-to-load Ours).
+    selectedMode: () => prefs.mode,
     // At join: `track` is the captured microphone (or the synthetic tone). Returns the track to publish.
     async start(track, { isSynthetic = false } = {}) {
       synthetic = isSynthetic ? track : null;

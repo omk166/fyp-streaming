@@ -32,6 +32,25 @@ def recognize(pipeline, samples, requested='auto', has_speech=lambda samples: Tr
     return ' '.join(text.split())
 
 
+def skip_identity_reorder():
+    """Speeds up Omnilingual's LLM models by 6-9% with the same text (measured on an Apple M4).
+
+    They write one character per decoder step, and each step reorders every layer's key/value cache
+    for beam search. With one segment and one hypothesis (the pipeline's default) that reorder is
+    an identity copy, so it is skipped. Batches or several hypotheses are still reordered."""
+    from fairseq2.nn import IncrementalStateBag
+    reorder = IncrementalStateBag.reorder
+    if getattr(reorder, 'skips_identity', False):
+        return
+
+    def reorder_unless_identity(self, new_order):
+        if new_order.numel() > 1:
+            reorder(self, new_order)
+
+    reorder_unless_identity.skips_identity = True
+    IncrementalStateBag.reorder = reorder_unless_identity
+
+
 def origin_allowed(origin, extra=()):
     """Pages on this computer are always allowed; a deployed meeting site must be listed explicitly."""
     if origin in extra:

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Call benchmark · FYP Streaming Lab</title>
+<style>
+body{font:16px system-ui;background:#101827;color:#edf4ff;margin:0;padding:24px 16px}main{max-width:900px;margin:auto}h1{margin:0 0 6px}p,li{color:#b8c9df}a{color:#b5f1dd}code{color:#edf4ff}
+button,select,input[type=text]{font:inherit;padding:9px 12px;border-radius:6px;border:1px solid #70849c;margin:4px 4px 4px 0;background:#b5f1dd;color:#101827}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}button.secondary,select,input[type=text]{background:#28415f;color:#edf4ff}
+select,input[type=text]{max-width:100%;min-width:min(320px,100%)}.panel{padding:16px;background:#1d2a3d;border-radius:10px;margin:16px 0}.panel h2{margin-top:0}.note{font-size:14px}.warn{color:#ffdd88}.error{color:#ffad9e}
+.field{display:block;margin:10px 0}.field span{display:block;font-size:14px;color:#b8c9df}
+.meter{height:10px;background:#28415f;border-radius:5px;overflow:hidden;margin:4px 0 10px}.meter span{display:block;height:100%;width:0;background:#b5f1dd;transition:width .08s}
+.progress{height:6px;background:#28415f;border-radius:3px;overflow:hidden}.progress span{display:block;height:100%;width:0;background:#edf4ff}
+</style></head><body><main>
+<p><a href="/">&larr; Home</a> · <a href="/audio-test">Audio test</a></p>
+<h1>Call benchmark: play into a meeting app, record what arrives</h1>
+<p>Plays the call benchmark's recording (noisy speech) into the microphone of the app under test, and records what the other participant of the call receives. <strong>All audio stays in this browser</strong>; the recording is saved to your computer for <code>npm run call:bench:score</code>. Set-up steps for Zoom, Meet and Teams are in the README, section "Call benchmark".</p>
+
+<section class="panel" aria-labelledby="setupHeading"><h2 id="setupHeading">1 · Set up</h2>
+<label class="field"><span>Playlist (<code>data/call-bench/&lt;time&gt;/playlist.wav</code>, made by <code>npm run call:bench:make</code>)</span><input type="file" id="playlist" accept=".wav,audio/wav"></label>
+<p id="playlistInfo" class="note" role="status"></p>
+<button id="allow" class="secondary">Allow access to audio devices</button>
+<p class="note">The list of devices needs microphone permission once. Nothing is recorded until you press Start.</p>
+<label class="field"><span>Play into (the sending app's microphone, for example BlackHole 2ch)</span><select id="output" disabled></select></label>
+<label class="field"><span>Record from (where the receiving participant's sound goes, for example BlackHole 16ch)</span><select id="input" disabled></select></label>
+<label class="field"><span>Name of this run (used in the file name, for example zoom-auto)</span><input type="text" id="name" maxlength="40" value="" placeholder="zoom-auto"></label>
+<p id="deviceWarning" class="warn" role="status"></p></section>
+
+<section class="panel" aria-labelledby="runHeading"><h2 id="runHeading">2 · Run</h2>
+<p class="note">Before you start: both participants are in the call, the sender's microphone is the "Play into" device, the receiver's speaker is the "Record from" device, and the receiver's own microphone is muted. Keep this tab open until the end.</p>
+<button id="start" disabled>Start</button><button id="stop" class="secondary" disabled>Stop early</button>
+<div class="progress" aria-hidden="true"><span id="progress"></span></div>
+<p id="status" role="status">Choose the playlist and the devices first.</p>
+<p class="note">Sent (the playlist)</p><div class="meter" aria-hidden="true"><span id="sentMeter"></span></div>
+<p class="note">Received (from the app)</p><div class="meter" aria-hidden="true"><span id="receivedMeter"></span></div>
+<p id="error" class="error" role="alert"></p></section>
+
+<section class="panel" aria-labelledby="saveHeading"><h2 id="saveHeading">3 · Save and score</h2>
+<p id="saveInfo" class="note">The recording appears here when the run ends.</p>
+<p><a id="save" hidden>Save recording</a></p>
+<p class="note">The file is a stereo WAV: left is what arrived, right is what was played (so the scorer knows exactly when each clip started). Score one or more runs with:<br><code>npm run call:bench:score -- data/call-bench/&lt;time&gt; zoom-auto=~/Downloads/call-zoom-auto-….wav</code></p></section>
+<script type="module" src="/call-bench.js"></script></main></body></html>

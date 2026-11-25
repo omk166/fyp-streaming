@@ -14,6 +14,7 @@ await Promise.all([
   build({ entryPoints: [`${root}client/audio/worklet.js`], bundle: true, format: 'iife', platform: 'browser', outfile: `${out}ours-worklet.js`, logLevel: 'warning' }),
   build({ entryPoints: [`${root}client/audio-test/main.js`], bundle: true, format: 'esm', platform: 'browser', outfile: `${root}public/audio-test.js`, logLevel: 'warning' }),
   build({ entryPoints: [`${root}client/audio-test/recorder-worklet.js`], bundle: true, format: 'iife', platform: 'browser', outfile: `${out}recorder-worklet.js`, logLevel: 'warning' }),
+  build({ entryPoints: [`${root}client/call-bench/main.js`], bundle: true, format: 'esm', platform: 'browser', outfile: `${root}public/call-bench.js`, logLevel: 'warning' }),
 ]);
 
 // LiteRT.js picks the relaxed-SIMD build when available and the "compat" build otherwise.

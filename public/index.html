@@ -78,7 +78,7 @@
     <button class="link-btn" type="button" data-open-settings><svg class="ic"><use href="#i-sliders"/></svg>Audio settings</button>
     <label class="sr-only" for="room">Room</label><input id="room" class="sr-only" readonly maxlength="48" tabindex="-1">
     <button id="join" class="primary" type="button" disabled>Join room</button>
-    <p class="hint">Your camera and microphone turn on when you join.</p>
+    <p id="joinHint" class="hint" role="status" aria-live="polite">Your camera and microphone turn on when you join.</p>
     <div id="ownerSlotLobby" class="owner-slot">
       <div id="roomOwner" hidden>
         <p class="section-title">Host tools</p>

@@ -324,11 +324,26 @@ async function sample() {
   } catch (error) { if (state.joined) fail(error); }
   finally { state.sampling = false; }
 }
+// What a join in progress is waiting for, shown under the Join button. Some steps wait on the person
+// (the browser's camera/microphone prompt) or on a download, so the lobby must say which one.
+const joinHintDefault = $('joinHint').textContent;
+function joinProgress(text = '') {
+  $('joinHint').textContent = text || joinHintDefault;
+  $('join').textContent = text ? 'Joining…' : 'Join room';
+}
+async function captureMedia() {
+  try { return await navigator.mediaDevices.getUserMedia({ audio: audioProcessing.constraints(), video: { width: 640, height: 360, frameRate: 30 } }); }
+  catch (error) {
+    if (error.name === 'NotAllowedError') throw Error(`Camera and microphone access was refused (${error.message}). Allow both for this site with the icon at the left of the address bar (on a Mac, also check System Settings › Privacy & Security), then join again.`);
+    throw error;
+  }
+}
 async function join() {
   if (!identity) return;
   if (!$('username').value.trim()) { $('username').focus(); $('status').textContent = 'Enter your name to join.'; return; }
   session++;
   $('join').disabled = true;
+  joinProgress('Connecting to the meeting server…');
   const started = performance.now();
   let receivedRecording = null, receivedTranscription = null;
   try {
@@ -383,7 +398,11 @@ async function join() {
         showPrivateChat(message.data);
       } else if (message.event === 'chat') { addChat(message.data); event('chat'); }
     };
-    await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(Error('Signaling connection failed')); });
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('Could not reach the meeting server within 15 s. Check your connection and try again.')), 15000);
+      ws.onopen = () => { clearTimeout(timer); resolve(); };
+      ws.onerror = () => { clearTimeout(timer); reject(Error('Signaling connection failed')); };
+    });
     ws.onclose = async ({ code }) => {
       if (returningHome || signingOut) return;
       if (code === 1008) { await leave(); location.replace(entryUrl()); return; }
@@ -401,10 +420,13 @@ async function join() {
     send = device.createSendTransport(await rpc('transport', { direction: 'send' })); bindTransport(send);
     recv = device.createRecvTransport(await rpc('transport', { direction: 'recv' })); bindTransport(recv);
     send.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => rpc('produce', { transportId: send.id, kind, rtpParameters, source: appData.source, paused: appData.initiallyPaused === true }).then(callback).catch(errback));
-    stream = $('synthetic').checked ? await syntheticStream() : await navigator.mediaDevices.getUserMedia({ audio: audioProcessing.constraints(), video: { width: 640, height: 360, frameRate: 30 } });
+    if (!$('synthetic').checked) joinProgress('Waiting for camera and microphone access. If no prompt is showing, click the camera icon at the left of the address bar and choose Allow.');
+    stream = $('synthetic').checked ? await syntheticStream() : await captureMedia();
     render(stream.getVideoTracks()[0], 'local', true);
     const captured = stream.getAudioTracks()[0];
+    joinProgress(audioProcessing.selectedMode() === 'ours' ? 'Starting “Ours” audio processing. The first time can take up to a minute while its models download…' : 'Starting your microphone…');
     const micTrack = await audioProcessing.start(captured, { isSynthetic: $('synthetic').checked });
+    joinProgress('Connecting your camera and microphone to the call…');
     const joinMuted = ui.joinMuted(), joinCameraOff = ui.joinCameraOff();
     micTrack.enabled = !joinMuted;
     stream.getVideoTracks()[0].enabled = !joinCameraOff;
@@ -423,7 +445,7 @@ async function join() {
     state.producers.push(cameraProducer); setVideoPaused('local', joinCameraOff);
     state.metadata.negotiatedProducers = state.producers.map(p => ({ kind: p.kind, rtpParameters: p.rtpParameters }));
     for (const id of await rpc('list')) await consume(id);
-    state.joined = true; whiteboard.refresh(); state.joinMs = performance.now() - started;
+    state.joined = true; joinProgress(); whiteboard.refresh(); state.joinMs = performance.now() - started;
     recordingControls.update(receivedRecording || info.recording);
     transcriptionControls.configure(info.speechService);
     transcriptionControls.update(receivedTranscription || info.transcription);
@@ -437,7 +459,7 @@ async function join() {
     setLabel($('camera'), joinCameraOff ? 'Resume camera' : 'Pause camera'); $('camera').classList.toggle('off', joinCameraOff);
     $('status').textContent = params.has('debug') ? `Joined ${$('room').value}. ${state.metadata.synthetic ? 'Synthetic' : 'Camera/microphone'} media. Telemetry active.` : `You joined ${$('room').value}.`;
     timer = setInterval(sample, 1000); await sample();
-  } catch (error) { fail(error); leave(); }
+  } catch (error) { fail(error); leave(); $('joinHint').textContent = `Could not join: ${error.message}`; }
 }
 let returningHome = false;
 async function returnHome(reason = 'left') {
@@ -475,7 +497,7 @@ function leave() {
   for (const id of ['leave','mic','camera','send','screen','hand','react-like','react-heart','react-laugh','wbDraw','wbFreeze','wbPop','wbColor','wbSize','wbUndo','wbClear']) $(id).disabled = true;
   $('wbBar').hidden = true; pipWin?.close(); penStop(); clearTimeout(wbTimer); setDrawing(false); overlays.clear(); annotations.clear(); frozen.clear();
   for (const id of ['join','room','mode','synthetic','username']) $(id).disabled = false;
-  roomControls.refresh();
+  joinProgress(); roomControls.refresh();
   setLabel($('mic'), 'Mute microphone'); setLabel($('camera'), 'Pause camera');
   $('mic').classList.remove('off'); $('camera').classList.remove('off'); ui.setPhase('lobby');
   event('left');

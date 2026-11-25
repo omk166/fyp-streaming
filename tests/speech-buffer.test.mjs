@@ -2,13 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SpeechBuffer } from '../public/speech-buffer.js';
 
-test('continuous speech survives multiple segment boundaries without missing samples', () => {
+test('continuous speech is cut into 4 s windows that overlap by 1 s, without missing samples', () => {
   const messages = [], buffer = new SpeechBuffer(message => messages.push(message));
-  for (let i = 0; i < 1100; i++) buffer.push(new Float32Array(320).fill(0.02));
+  // 22 s of speech, each sample numbered so the windows' contents can be checked.
+  for (let i = 0; i < 1100; i++) buffer.push(Float32Array.from({ length: 320 }, (_, j) => 0.02 + (i * 320 + j) * 1e-7));
   buffer.flush();
-  assert.deepEqual(messages.map(m => m.samples.length), [128000, 128000, 96000]);
-  assert.deepEqual(messages.map(m => m.startSample), [0, 128000, 256000]);
-  assert.equal(messages.reduce((n, m) => n + m.samples.length, 0), 352000);
+  assert.deepEqual(messages.map(m => m.startSample), [0, 48000, 96000, 144000, 192000, 240000, 288000, 336000]);
+  assert.deepEqual(messages.map(m => m.samples.length), [64000, 64000, 64000, 64000, 64000, 64000, 64000, 16000]);
+  assert.deepEqual(messages.map(m => m.overlapSamples), [0, 16000, 16000, 16000, 16000, 16000, 16000, 16000]);
+  assert.deepEqual(messages.map(m => m.continues), [true, true, true, true, true, true, true, false]);
+  for (const m of messages) assert.ok(Math.abs(m.samples[0] - (0.02 + m.startSample * 1e-7)) < 1e-6, 'each window starts where it says');
+  const covered = new Set(messages.flatMap(m => [...m.samples.keys()].map(k => m.startSample + k)));
+  assert.equal(covered.size, 352000, 'every sample is in a window');
+});
+
+test('a window closed by a pause does not overlap the next one', () => {
+  const messages = [], buffer = new SpeechBuffer(message => messages.push(message));
+  for (let i = 0; i < 100; i++) buffer.push(new Float32Array(320).fill(0.02));
+  for (let i = 0; i < 40; i++) buffer.push(new Float32Array(320));
+  for (let i = 0; i < 100; i++) buffer.push(new Float32Array(320).fill(0.02));
+  buffer.flush();
+  assert.deepEqual(messages.map(m => [m.overlapSamples, m.continues]), [[0, false], [0, false]]);
 });
 
 test('quiet speech is kept, silence does not trigger recognition, final short words flush', () => {

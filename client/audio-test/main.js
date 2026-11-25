@@ -4,19 +4,21 @@ import { createPlayout } from '../audio/playout.js';
 import { MODES, browserConstraints, readSettings, compareSettings, formatSettings, loadPrefs } from '../audio/modes.js';
 import { encodeWav, estimateDelay, Downsampler, meanSquare, powerDb, rmsDbfs, speechToNoise, frameLevels, wordErrorRate } from '../audio/dsp.js';
 import { speechLikeClip, pinkNoise, averageTo16k } from './signals.js';
+import { SCRIPT } from './script.js';
+import { DOUBLE_TALK, doubleTalkSeconds, gateFarEnd, doubleTalkLevels } from './doubletalk.js';
 import { SpeechBuffer } from '../../public/speech-buffer.js';
 import { createLocalSpeech, speechProblem } from '../local-speech.js';
 
 const RATE = 48000, LEAD_IN = 3, TAKE_SECONDS = 20;
 const ECHO_SILENCE = 1.5, ECHO_CLIP = 8, ECHO_TAIL = 0.7;
-export const SCRIPT = 'The quick test begins now. I am reading this short passage so the meeting can compare three ways of cleaning my voice. Each version should sound clear, and the speech recognizer should still understand every word I say.';
+export { SCRIPT };
 const ORDER = ['off', 'browser', 'ours'];
 const $ = id => document.getElementById(id);
-const results = Object.fromEntries(ORDER.map(mode => [mode, { take: null, echo: null, recognition: null }]));
+const results = Object.fromEntries(ORDER.map(mode => [mode, { take: null, echo: null, recognition: null, doubletalk: null, dtRecognition: null }]));
 let busy = false, stopRequested = null;
 const round = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? null : Number(v.toFixed(d)));
 
-$('script').textContent = SCRIPT;
+$('script').textContent = $('dtScript').textContent = SCRIPT;
 const saved = loadPrefs((() => { try { return localStorage; } catch { return null; } })());
 $('echoSwitch').checked = saved.echo; $('noiseSwitch').checked = saved.noise;
 const unsupported = oursSupport();
@@ -27,7 +29,7 @@ function setError(text) { $('error').textContent = text || ''; }
 function lock(on) {
   busy = on;
   for (const b of document.querySelectorAll('button[data-record]')) b.disabled = on;
-  $('echoRun').disabled = on; $('werRun').disabled = on || !ORDER.some(m => results[m].take?.out);
+  $('echoRun').disabled = $('dtRun').disabled = on; $('werRun').disabled = on || !recordings().length;
   $('echoSwitch').disabled = $('noiseSwitch').disabled = on;
 }
 const switches = () => ({ echo: $('echoSwitch').checked, noise: $('noiseSwitch').checked });
@@ -39,8 +41,9 @@ async function microphone(constraints) {
   return stream.getAudioTracks()[0];
 }
 function closeCapture(c) { c.pipeline?.dispose(); c.track?.stop(); if (c.raw !== c.track) c.raw?.stop(); }
-async function openMode(mode) {
-  const prefs = { mode, ...switches() }, requested = browserConstraints(prefs);
+// extra: constraint overrides for the mode under test (the benchmark uses { autoGainControl: false } on Browser).
+async function openMode(mode, extra = {}) {
+  const prefs = { mode, ...switches() }, requested = { ...browserConstraints(prefs), ...extra };
   const c = { mode, prefs, requested, track: null, raw: null, pipeline: null, notes: [], stats: null };
   try {
     if (mode === 'off') { c.track = c.raw = await microphone(requested); }
@@ -260,15 +263,101 @@ async function echoTest() {
 }
 
 // Does the microphone recording contain the far-end clip? GCC-PHAT between the clip and the recording.
-function echoPresence(clip, recorded) {
-  const start = Math.round(ECHO_SILENCE * RATE);
+function echoPresence(clip, recorded, startSeconds = ECHO_SILENCE) {
+  const start = Math.round(startSeconds * RATE);
   const a = new Downsampler().process(clip), b = new Downsampler().process(recorded.subarray(start, start + clip.length + Math.round(0.5 * RATE)));
   const n = Math.min(a.length, b.length);
   const { lag, confidence } = estimateDelay(a.subarray(0, n), b.subarray(0, n), Math.round(0.5 * 16000));
   return confidence > 8 ? { ms: lag / 16, confidence: Math.round(confidence) } : null;
 }
 
+// ---- 2b. Double-talk test: the far end talks every other 1.5 s window while the tester reads the script.
+function buildDoubleTalk() {
+  for (const mode of ORDER) {
+    const box = document.createElement('section'); box.className = 'take'; box.setAttribute('aria-label', `${MODES[mode].label} double-talk recording`);
+    box.innerHTML = `<h3>${MODES[mode].label}</h3><div class="meter" aria-hidden="true"><span id="dtMeter-${mode}"></span></div><div id="dtPlayback-${mode}"></div>`;
+    $('dtTakes').append(box);
+  }
+}
+async function doubleTalkTest() {
+  if (busy) return;
+  lock(true); setError('');
+  const p = DOUBLE_TALK, far = gateFarEnd(speechLikeClip(RATE, p.window * p.windows, 11), RATE, p), total = doubleTalkSeconds(p);
+  let link;
+  try { link = await loopback(); }
+  catch (error) { setError(`Double-talk test could not start: ${error.message}`); lock(false); return; }
+  try {
+    for (const mode of ORDER) {
+      $('dtStatus').textContent = `${MODES[mode].label}: opening the microphone…`;
+      let c;
+      try { c = await openMode(mode); } catch (error) { results[mode].doubletalk = { error: error.message }; render(); continue; }
+      let playout = null;
+      if (c.pipeline && c.prefs.echo) {
+        // Same routing as in a meeting: the far end plays through Web Audio and feeds the echo canceller.
+        playout = createPlayout(); playout.add('far-end', link.el, link.track);
+        c.pipeline.connectReference(playout.route(c.pipeline.ctx));
+      }
+      let playedAt = null;
+      $('dtStatus').textContent = `Recording ${MODES[mode].label}.`;
+      try {
+        const rec = await record(c, total, {
+          onChunk: chunk => { $(`dtMeter-${mode}`).style.width = `${Math.max(0, Math.min(100, (powerDb(meanSquare(chunk)) + 70) / 70 * 100))}%`; },
+          onTime: t => {
+            if (playedAt === null && t >= p.start) { playedAt = t; link.play(far); }
+            $('dtCue').textContent = t < p.lead ? `${MODES[mode].label}: stay silent… ${Math.ceil(p.lead - t)}`
+              : `${MODES[mode].label}: read the script aloud and keep reading while the other voice talks over you (${Math.ceil(total - t)} s left; start again from the top if you finish)`;
+            $('dtScript').classList.toggle('reading', t >= p.lead);
+          },
+        });
+        results[mode].doubletalk = { out: rec.out, raw: rec.raw, playedAt, notes: c.notes, stats: c.stats, settings: c.settings };
+        results[mode].dtRecognition = null;
+        const holder = $(`dtPlayback-${mode}`); holder.replaceChildren(...wavPlayer(rec.out, `audio-test-doubletalk-${mode}.wav`));
+      } catch (error) { results[mode].doubletalk = { error: error.message }; }
+      finally { playout?.clear(); closeCapture(c); $('dtScript').classList.remove('reading'); $(`dtMeter-${mode}`).style.width = '0'; }
+      render();
+    }
+  } finally { link.close(); $('dtCue').textContent = ''; }
+  const valid = analyseDoubleTalk(far);
+  $('dtStatus').textContent = valid ? 'Double-talk test finished. Listen to the three recordings below as well: the numbers do not tell you how natural your voice sounds.'
+    : 'Double-talk test finished, but in the Off run the microphone did not pick up the other voice (headphones or muted speakers?). The double-talk results are not valid.';
+  lock(false); render();
+}
+// Line the windows up with the recording: the far end reaches the microphone after the echo path delay (measured
+// from the raw microphone, where there is one; else from the Off run or the echo test), and the processed output
+// trails the raw microphone by the mode's own delay.
+function analyseDoubleTalk(far) {
+  const p = DOUBLE_TALK, off = results.off.doubletalk;
+  const offEcho = off?.out && off.playedAt !== null ? echoPresence(far, off.out, off.playedAt) : null;
+  const valid = Boolean(offEcho) || Boolean(results.off.echo?.valid);
+  const fallbackMs = offEcho?.ms ?? results.off.echo?.echoPath?.ms ?? 150;
+  for (const mode of ORDER) {
+    const d = results[mode].doubletalk;
+    if (!d?.out) continue;
+    const separateRaw = d.raw && d.raw !== d.out;
+    const own = mode === 'off' ? offEcho : separateRaw && d.playedAt !== null ? echoPresence(far, d.raw, d.playedAt) : null;
+    d.echoDelayMs = own?.ms ?? fallbackMs;
+    d.latencyMs = mode === 'off' ? 0 : (separateRaw ? measureLatency(d.raw, d.out, p.lead)?.ms : null) ?? results[mode].take?.latency?.ms ?? 0;
+    const floorDb = powerDb(meanSquare(d.out, Math.round(0.25 * RATE), Math.round((p.lead - 0.1) * RATE)));
+    d.levels = doubleTalkLevels(d.out, RATE, { playedAt: d.playedAt, shift: (d.echoDelayMs + d.latencyMs) / 1000, floorDb });
+    d.valid = valid;
+  }
+  return valid;
+}
+function wavPlayer(samples, name) {
+  const url = URL.createObjectURL(new Blob([encodeWav(samples, RATE)], { type: 'audio/wav' }));
+  const audio = document.createElement('audio'); audio.controls = true; audio.src = url;
+  const link = document.createElement('a'); link.href = url; link.download = name; link.textContent = 'Download WAV';
+  return [audio, link];
+}
+
 // ---- 3. Recognition check through this computer's speech service, the recognizer live transcription uses.
+// Every recording made so far: the A/B takes and the double-talk takes.
+function recordings() {
+  return ORDER.flatMap(mode => [
+    { mode, out: results[mode].take?.out, key: 'recognition', label: MODES[mode].label },
+    { mode, out: results[mode].doubletalk?.out, key: 'dtRecognition', label: `${MODES[mode].label} (double talk)` },
+  ]).filter(r => r.out);
+}
 async function recognition() {
   if (busy) return;
   lock(true); setError('');
@@ -277,25 +366,23 @@ async function recognition() {
     const speech = speechService && createLocalSpeech(speechService);
     const problem = speech ? speechProblem(await speech.status(), speechService, location.origin) : 'This server did not say where the local speech service is.';
     if (problem) {
-      for (const mode of ORDER) if (results[mode].take?.out) results[mode].recognition = { error: 'the speech service on this computer is not ready' };
+      for (const r of recordings()) results[r.mode][r.key] = { error: 'the speech service on this computer is not ready' };
       $('werStatus').textContent = `Not measured: ${problem} Nothing was sent.`;
       return;
     }
-    for (const mode of ORDER) {
-      const take = results[mode].take;
-      if (!take?.out) continue;
+    for (const { mode, out, key, label } of recordings()) {
       // Segment exactly like the meeting transcription worklet: 16 kHz averaging, then SpeechBuffer.
-      const chunks = [], buffer = new SpeechBuffer(m => chunks.push(m.samples)), s16 = averageTo16k(take.out, RATE);
+      const chunks = [], buffer = new SpeechBuffer(m => chunks.push(m.samples)), s16 = averageTo16k(out, RATE);
       for (let i = 0; i + 320 <= s16.length; i += 320) buffer.push(s16.subarray(i, i + 320));
       buffer.flush();
       const texts = [];
       for (let i = 0; i < chunks.length; i++) {
-        $('werStatus').textContent = `${MODES[mode].label}: recognizing segment ${i + 1} of ${chunks.length} on this computer…`;
+        $('werStatus').textContent = `${label}: recognizing segment ${i + 1} of ${chunks.length} on this computer…`;
         const text = await speech.transcribe(chunks[i], 'eng_Latn');
         if (text) texts.push(text);
       }
       const hypothesis = texts.join(' ');
-      results[mode].recognition = { segments: chunks.length, hypothesis, ...wordErrorRate(SCRIPT, hypothesis) };
+      results[mode][key] = { segments: chunks.length, hypothesis, ...wordErrorRate(SCRIPT, hypothesis) };
       render();
     }
     $('werStatus').textContent = 'Recognition check finished.';
@@ -331,7 +418,26 @@ function cell(mode, row) {
     case 'wer': {
       if (!rec) return take?.out ? na('recognition check not run') : noTake;
       if (rec.error) return na(rec.error);
-      return `${round(rec.wer * 100)}% (${rec.substitutions} sub, ${rec.deletions} del, ${rec.insertions} ins of ${rec.referenceWords} words): “${rec.hypothesis}”`;
+      return werText(rec);
+    }
+    case 'dt': {
+      const d = r.doubletalk;
+      if (!d) return na('double-talk test not run');
+      if (d.error) return na(`could not run: ${d.error}`);
+      if (!d.valid) return na('the Off run did not pick up the other voice, so there was no echo to cancel');
+      if (d.levels?.error) return na(d.levels.error);
+      const sign = v => `${v >= 0 ? '+' : '−'}${Math.abs(round(v))} dB`, change = d.levels.changeDb;
+      if (mode === 'off') return `${sign(change)} while the other voice talks: the echo adding to your voice (your voice ${round(d.levels.aloneDb)} dBFS)`;
+      const offChange = results.off.doubletalk?.levels?.changeDb;
+      const verdict = change <= -3 ? 'your voice is turned down while the other voice talks' : change >= 3 ? 'echo comes through on top of your voice' : 'your voice is kept';
+      return `${sign(change)} while the other voice talks: ${verdict}${offChange !== undefined ? ` (Off run: ${sign(offChange)})` : ''}`;
+    }
+    case 'dtWer': {
+      const d = r.doubletalk, dr = r.dtRecognition;
+      if (!d?.out) return na('double-talk test not run');
+      if (!dr) return na('recognition check not run');
+      if (dr.error) return na(dr.error);
+      return werText(dr);
     }
     case 'cost': {
       if (mode === 'off') return 'none (no processing)';
@@ -366,7 +472,8 @@ function cell(mode, row) {
     }
   }
 }
-const ROWS = [['settings', 'Settings the browser reports'], ['speech', 'Speech level'], ['snr', 'Speech-to-noise estimate'], ['echo', 'Residual echo / echo reduction'], ['wer', 'Word error rate'], ['cost', 'Processing time per frame'], ['cpu', 'CPU use'], ['latency', 'Added latency']];
+const werText = rec => `${round(rec.wer * 100)}% (${rec.substitutions} sub, ${rec.deletions} del, ${rec.insertions} ins of ${rec.referenceWords} words): “${rec.hypothesis}”`;
+const ROWS = [['settings', 'Settings the browser reports'], ['speech', 'Speech level'], ['snr', 'Speech-to-noise estimate'], ['echo', 'Residual echo / echo reduction'], ['dt', 'Double talk: your voice level while the other voice talks'], ['wer', 'Word error rate'], ['dtWer', 'Word error rate during double talk'], ['cost', 'Processing time per frame'], ['cpu', 'CPU use'], ['latency', 'Added latency']];
 function render() {
   const body = $('results'); body.replaceChildren();
   for (const [row, label] of ROWS) {
@@ -378,17 +485,18 @@ function render() {
     }
     body.append(tr);
   }
-  $('werRun').disabled = busy || !ORDER.some(m => results[m].take?.out);
+  $('werRun').disabled = busy || !recordings().length;
 }
 $('exportResults').onclick = () => {
   const data = { createdAt: new Date().toISOString(), userAgent: navigator.userAgent, script: SCRIPT, results: Object.fromEntries(ORDER.map(mode => {
-    const { take, echo, recognition: rec } = results[mode];
-    return [mode, { take: take ? { ...take, out: undefined } : null, echo, recognition: rec, table: Object.fromEntries(ROWS.map(([row]) => [row, cell(mode, row)])) }];
+    const { take, echo, recognition: rec, doubletalk, dtRecognition } = results[mode];
+    return [mode, { take: take ? { ...take, out: undefined } : null, echo, recognition: rec, doubletalk: doubletalk ? { ...doubletalk, out: undefined, raw: undefined } : null, dtRecognition, table: Object.fromEntries(ROWS.map(([row]) => [row, cell(mode, row)])) }];
   })) };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = 'audio-test-results.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 $('echoRun').onclick = echoTest;
+$('dtRun').onclick = doubleTalkTest;
 $('werRun').onclick = recognition;
 // Offline run of known audio through the same worker and models (used by scripts/audio-processing.mjs).
 // mic/ref: Float32Array at 48 kHz. The pipeline's live input is a silent generated track.
@@ -397,5 +505,17 @@ async function offline({ mic, ref = null, echo = true, noise = false }) {
   const pipeline = await createOursPipeline({ source: silent.stream.getAudioTracks()[0], echo, noise });
   try { return await pipeline.process(mic, ref); } finally { pipeline.dispose(); ctx.close().catch(() => {}); }
 }
-buildTakes(); render(); lock(false);
-window.audioTest = { results, SCRIPT, offline };
+// One live capture of the microphone in a mode, as a 48 kHz 16-bit WAV in base64 (used by scripts/audio-bench.mjs,
+// which feeds Chrome's fake microphone from a file so every mode hears exactly the same input).
+// agc: false turns Browser's automatic gain control off, to measure its noise suppression on its own.
+async function capture({ mode, seconds, echo = true, noise = true, agc = true }) {
+  $('echoSwitch').checked = echo; $('noiseSwitch').checked = noise;
+  const c = await openMode(mode, mode === 'browser' && !agc ? { autoGainControl: false } : {});
+  try {
+    const rec = await record(c, seconds), bytes = encodeWav(rec.out, RATE);
+    let text = ''; for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { wav: btoa(text), settings: c.settings, notes: c.notes, stats: c.stats };
+  } finally { closeCapture(c); }
+}
+buildTakes(); buildDoubleTalk(); render(); lock(false);
+window.audioTest = { results, SCRIPT, offline, capture };
