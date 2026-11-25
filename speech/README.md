@@ -4,19 +4,19 @@ Live transcription runs on **each participant's own computer**. The meeting page
 the microphone into speech windows (AudioWorklet, mono 16 kHz; see **Windows** below) and sends
 them over loopback to a local speech service, `speech/service.py`. The service runs
 Meta's [Omnilingual ASR](https://github.com/facebookresearch/omnilingual-asr) model
-`omniASR_LLM_300M_v2` by default (a 6.1 GiB download). The page then sends **only the recognized text** to the meeting
+`omniASR_LLM_1B_v2` by default (an 8.5 GiB download). The page then sends **only the recognized text** to the meeting
 server. The server checks consent, stamps the authenticated speaker name and shares the
 text with the room. No audio reaches the meeting server, and the server needs no speech
 setup.
 
 Captions appear once your own computer has recognized a window, so about every 3 s during
-continuous speech. On an Apple M4 MacBook Air, an 8-second segment took 0.1–0.5 s with the CTC
-300M model (a 4-second window about 0.1–0.2 s). The default LLM 300M model, like LLM 1B (same
-text decoder), writes the text one character at a time (about 48 ms per character), so a fully
-spoken 4-second window took about 3.4 s on its own and 5–6 s during a live meeting in Chrome. Each
-window brings 3 s of new speech, so that is slower than real time: during continuous speech the
-captions fall further and further behind, and the transcript pane says how much audio is still
-waiting. Use CTC 300M when captions must keep up. The MacBook Air has no fan and slows down after a few minutes of this.
+continuous speech. The default LLM 1B model, like LLM 300M (same text decoder), writes the text
+one character at a time (about 48 ms per character). On an Apple M4 MacBook Air a fully spoken
+4-second window took about 3.6 s on its own (LLM 300M: 3.4 s, and 5–6 s during a live meeting in
+Chrome). Each window brings 3 s of new speech, so that is slower than real time: during continuous
+speech the captions fall further and further behind and catch up in pauses, and the transcript
+pane says how much audio is still waiting. The MacBook Air has no fan and slows down after a few
+minutes of this.
 
 ## Install (once per computer)
 
@@ -26,8 +26,8 @@ Requirements:
   (not tested here).
 - Python 3.11 or 3.10. omnilingual-asr 0.2.0 declares `<=3.12`, and pip reads that as
   excluding 3.12.1 and later.
-- About 9.5 GB of disk for the Python packages and the default model (more for a larger
-  model, see below).
+- About 11 GB of disk for the Python packages and the default model (see **Models** for the
+  others).
 
 ```sh
 npm run speech:install
@@ -43,7 +43,7 @@ npm run speech
 ```
 
 The service listens on `http://127.0.0.1:8765` (this computer only). The first start
-downloads the model (6.1 GiB for the default) from `dl.fbaipublicfiles.com` into
+downloads the model (8.5 GiB for the default) from `dl.fbaipublicfiles.com` into
 `~/.cache/fairseq2/assets/`. Later starts only load it. `/health` reports `loading`, then
 `ready`. Until it is ready the meeting page says so and does not let you start or agree
 to transcription.
@@ -65,7 +65,7 @@ Options (flags or environment variables):
 | --- | --- | --- |
 | `--device` | `SPEECH_DEVICE` | `auto`: CUDA, else Apple GPU (`mps`), else CPU |
 | `--dtype` | `SPEECH_DTYPE` | `auto`: bfloat16 on CUDA, float16 on `mps`, float32 on CPU |
-| `--model` | `SPEECH_MODEL` | `omniASR_LLM_300M_v2` |
+| `--model` | `SPEECH_MODEL` | `omniASR_LLM_1B_v2` |
 | `--port` | `SPEECH_PORT` | `8765` (pages look there unless the meeting server sets `LOCAL_SPEECH_URL`) |
 | `--allow-origin` | `SPEECH_ALLOWED_ORIGINS` (comma-separated) | none |
 
@@ -75,13 +75,12 @@ Options (flags or environment variables):
 | --- | --- | --- |
 | `omniASR_CTC_300M_v2` | 1.21 GiB | ignored: the model detects the language itself |
 | `omniASR_CTC_1B_v2` | 3.63 GiB | ignored |
-| `omniASR_LLM_300M_v2` (default) | 6.08 GiB | used |
-| `omniASR_LLM_1B_v2` | 8.49 GiB | used |
+| `omniASR_LLM_300M_v2` | 6.08 GiB | used |
+| `omniASR_LLM_1B_v2` (default) | 8.49 GiB | used |
 
-Choose another one with `npm run speech -- --model omniASR_CTC_300M_v2`. The CTC 300M
-model is the smallest and by far the fastest; use it when captions must keep up with continuous
-speech (on an M4 MacBook Air, neither LLM model does). Nobody has measured how much the larger models
-improve our Arabic speech. The first start with a new model downloads it. fairseq2's downloader can
+Choose another one with `npm run speech -- --model omniASR_LLM_300M_v2`. LLM 300M is 2.4 GiB
+smaller and about 3% faster, with the same text decoder; on an M4 MacBook Air neither LLM model
+keeps up with continuous speech. CTC models are much faster but ignore the language choice. The first start with a new model downloads it. fairseq2's downloader can
 stall on slow connections without timing out; if the progress bar stops moving, stop
 the service and start it again (this restarts that download from zero).
 
@@ -98,6 +97,12 @@ model, the choice is passed to the recognizer as an Omnilingual language code:
 - **Lebanese / Levantine Arabic** `apc_Arab`, **Modern Standard Arabic** `arb_Arab`,
   **English** `eng_Latn`.
 
+On a 22-second recording of formal Arabic made with the macOS Arabic voice, LLM 1B got 31 of 32
+words right with any of the three Arabic choices, and so did LLM 300M. Arabic script leaves out
+short vowels, so a window of Arabic takes about half as long to write as English (2.4–2.7 s per
+4-second window here). Lebanese dialect, real voices and mixed speech have not been measured yet.
+See `speech/MODEL-EXPERIMENTS.md`.
+
 ## Windows
 
 The page cuts speech into windows of at most 4 s. A pause (0.64 s of quiet after at least 1 s
@@ -105,12 +110,15 @@ of speech) closes a window early. Speech that runs on is cut at 4 s, and the nex
 starts 1 s before the cut: 0–4 s, 3–7 s, 6–10 s, and so on. A word split by a cut is then heard
 whole in one of the two windows. The page holds back each such window's last word, lines up the
 next window's text with the end of the previous one and drops the words they share
-(`client/transcript-merge.js`), so each word is shown once.
+(`client/transcript-merge.js`), so each word is shown once. Words are compared with Arabic spelling
+variants treated as equal; when they still differ, the letters are compared. If nothing lines up,
+the page keeps all of the new window's words, because the previous window has most likely left out
+the speech at its cut: a word shown twice is better than a word lost.
 
 On the test recording, plain 4-second cuts produced 1.5–4.5% word errors at the cuts
 ("transcris nsystem"); with the 1-second overlap the joined text had none, the same as
 8-second segments. Each window brings 3 s of new speech, so a model must recognize a 4-second
-window in under 3 s to keep up: CTC 300M takes about 0.1 s, LLM 1B about 3.6 s.
+window in under 3 s to keep up: on an M4 MacBook Air LLM 1B takes about 3.6 s and LLM 300M about 3.4 s.
 `speech/MODEL-EXPERIMENTS.md` has the measurements.
 
 ## What the service does with audio

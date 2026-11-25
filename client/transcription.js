@@ -62,7 +62,7 @@ export function setupTranscription({ $, state, rpc, microphone, notice, createSp
         const recognized = await speech.transcribe(job.samples, job.language, controller.signal);
         if (controller.signal.aborted || job.id !== current.id) { merger.reset(); continue; }
         // Overlapping windows repeat about a second of speech; show each word once.
-        const { text, joined } = merger.add(recognized, { seq: job.seq, overlapSamples: job.overlapSamples, samples: job.samples.length, continues: job.continues });
+        const { text, joined } = merger.add(recognized, { seq: job.seq, overlapSamples: job.overlapSamples, continues: job.continues });
         const end = job.offset + job.duration, start = Math.min(joined ? job.offset + job.overlapSamples / 16 : job.offset, end - 100);
         if (text) await rpc('transcriptionText', { id: job.id, seq: job.seq, offset: start, duration: end - start, text });
       } catch (error) {

@@ -28,10 +28,28 @@ test('Arabic text lines up the same way', () => {
   assert.equal(merger.add('كيف حالك اليوم', { seq: 1, ...overlap }).text, 'حالك اليوم');
 });
 
-test('when nothing lines up, the held word is kept and about the overlap is dropped', () => {
+test('when nothing lines up, the held word is kept and nothing is dropped', () => {
   const merger = createMerger();
   assert.equal(merger.add('alpha beta gamma', { seq: 0, continues: true }).text, 'alpha beta');
-  assert.equal(merger.add('xxx yyy zzz www', { seq: 1, ...overlap }).text, 'gamma yyy zzz www');
+  assert.equal(merger.add('xxx yyy zzz www', { seq: 1, ...overlap }).text, 'gamma xxx yyy zzz www');
+});
+
+test('words the previous window left out at its cut are kept (Arabic, LLM 1B)', () => {
+  const merger = createMerger();
+  assert.equal(merger.add('الزمني للاسابيع القادمة', { seq: 0, continues: true }).text, 'الزمني للاسابيع');
+  assert.equal(merger.add('ارجو من الجميع مراجعة التقرير قبل', { seq: 1, ...overlap }).text, 'القادمة ارجو من الجميع مراجعة التقرير قبل');
+});
+
+test('the same speech heard as different words is matched by its letters', () => {
+  const merger = createMerger();
+  assert.equal(merger.add('قبل يوم الخميس وإرسال ملاحقين', { seq: 0, continues: true }).text, 'قبل يوم الخميس وإرسال');
+  assert.equal(merger.add('و الرسالة ملاحظاتكم إلى الفريق شكرا لكم', { seq: 1, ...overlap }).text, 'إلى الفريق شكرا لكم');
+});
+
+test('Arabic spelling variants count as the same word', () => {
+  assert.ok(sameWord('أرجو', 'ارجو'));
+  assert.ok(sameWord('للأسابيع', 'للاسابيع'));
+  assert.ok(sameWord('الفريقُ', 'الفريق'));
 });
 
 test('the last window at stop, made only of the overlap, releases the held word', () => {

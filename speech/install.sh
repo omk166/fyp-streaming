@@ -10,4 +10,4 @@ if [ -z "$PYTHON" ]; then
 fi
 "$PYTHON" -m venv .venv-omniasr
 .venv-omniasr/bin/python -m pip install -r speech/requirements.txt
-echo 'Installed. Start the service with: npm run speech   (the first start downloads the model, about 6.1 GiB)'
+echo 'Installed. Start the service with: npm run speech   (the first start downloads the model, about 8.5 GiB)'

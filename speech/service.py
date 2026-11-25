@@ -23,9 +23,9 @@ parser.add_argument('--allow-origin', action='append', default=[], metavar='URL'
                     help='meeting site allowed to use this service, e.g. https://meet.example.com '
                          '(pages on localhost are always allowed; repeat for several sites)')
 parser.add_argument('--port', type=int, default=int(os.getenv('SPEECH_PORT', '8765')))
-# LLM 300M (6.1 GiB) is the default and uses the language hint; LLM 1B (8.5 GiB) is no faster or more accurate on our test;
-# CTC 300M (1.2 GiB) is far faster but ignores the hint.
-parser.add_argument('--model', default=os.getenv('SPEECH_MODEL', 'omniASR_LLM_300M_v2'))
+# LLM 1B (8.5 GiB) is the default and uses the language hint; LLM 300M (6.1 GiB) has the same text decoder and is 3% faster;
+# CTC models are far faster but ignore the hint.
+parser.add_argument('--model', default=os.getenv('SPEECH_MODEL', 'omniASR_LLM_1B_v2'))
 parser.add_argument('--device', default=os.getenv('SPEECH_DEVICE', 'auto'), help='auto, cpu, mps or cuda')
 parser.add_argument('--dtype', default=os.getenv('SPEECH_DTYPE', 'auto'), help='auto, float32, float16 or bfloat16')
 args = parser.parse_args()
@@ -64,7 +64,7 @@ def load():
         dtype = pick_dtype(torch, device)
         state['device'] = f'{device} ({str(dtype).removeprefix("torch.")})'
         started = time.monotonic()
-        print(f'Loading {args.model} on {state["device"]}. The first start downloads its weights (6.1 GiB for omniASR_LLM_300M_v2, 8.5 GiB for omniASR_LLM_1B_v2, 1.2 GiB for omniASR_CTC_300M_v2).', flush=True)
+        print(f'Loading {args.model} on {state["device"]}. The first start downloads its weights (8.5 GiB for omniASR_LLM_1B_v2, 6.1 GiB for omniASR_LLM_300M_v2, 1.2 GiB for omniASR_CTC_300M_v2).', flush=True)
         pipeline = ASRInferencePipeline(model_card=args.model, device=device, dtype=dtype)
         if state['languageHints']:
             skip_identity_reorder()

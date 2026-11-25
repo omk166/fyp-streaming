@@ -29,7 +29,7 @@ Existing local recording downloads finish before the redirect.
 
 Live Arabic/English transcription runs on each participant's own computer, with
 separate unanimous consent, speaker labels and TXT/SRT downloads. Each participant
-runs a local Omnilingual ASR service (`omniASR_LLM_300M_v2` by default, `npm run speech`); the page
+runs a local Omnilingual ASR service (`omniASR_LLM_1B_v2` by default, `npm run speech`); the page
 sends it their microphone's speech segments and sends only the recognized text to the
 meeting server, which never receives audio and needs no speech setup. See
 [local transcription setup and current limits](speech/README.md).

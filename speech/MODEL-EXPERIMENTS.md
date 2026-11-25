@@ -252,19 +252,79 @@ Measured on 25 November, after the overlapping windows were in place.
   LLM decoder, matched LLM 1B on the test, and costs 2.4 GiB less to download. CTC 300M stays the
   option when captions must keep up (`npm run speech -- --model omniASR_CTC_300M_v2`).
 
+## Back to LLM 1B, and a first Arabic test (25 Nov)
+
+**Decision:** LLM 1B became the default again (`speech/service.py`), at the project's request.
+LLM 300M stays available with `npm run speech -- --model omniASR_LLM_300M_v2`. Both are already
+in the local cache, so the switch needed no download.
+
+**Arabic test recording.** There was no Arabic recording with a reference transcript, so one
+was made with the macOS Arabic voice (Majed, Modern Standard Arabic, `say -r 160`): 22 s, 32
+words, a short meeting announcement (`data/transcription-test/arabic-msa.wav` and `.txt`,
+git-ignored). It was cut into 4 s windows overlapping by 1 s exactly as the page does (7 windows),
+recognized with `speech/benchmark.py --save`, joined with `scripts/merge-windows.mjs` and scored
+against the reference. The scorer now ignores punctuation and diacritics and treats Arabic letter
+variants as equal (أ إ آ → ا, ى → ي, ة → ه), so spelling conventions are not counted as errors.
+It also reports the character error rate (CER).
+
+**Joining bug found.** The first scoring gave 3–12% word errors, and most of them were not the
+model's. When a window's opening words did not line up with the end of the previous window, the
+page assumed about a quarter of its words were repeats and dropped them. In Arabic the previous
+window often stops short of the overlap: the decoder left out the words cut at its end. So the
+dropped words were real speech, heard only once ("أرجو من", "إلى"). The fix in
+`client/transcript-merge.js`:
+
+1. Arabic spelling variants (hamza forms, alef maqsura, taa marbuta, diacritics) count as the same
+   word when lining windows up.
+2. When the words do not line up, the letters are compared: if the next window's first 1–4 words
+   (at least 8 letters) are within 45% edits of the end of the previous window, they are taken as
+   the same speech heard differently and dropped (one window had "وإرسال ملاحقين", the next
+   "و الرسالة ملاحظاتكم"). Measured on these runs: real repeats 33–42%; all 120 pairs of windows
+   that share no audio 50% or more.
+3. Otherwise nothing is dropped. Showing a word twice is better than losing it.
+
+The 45% threshold was chosen on these same runs, so it needs checking on more recordings.
+
+| Model and language hint | Word errors (old join) | Word errors | Character errors | Per 4 s window* | Decoder steps per window |
+| --- | --- | --- | --- | --- | --- |
+| LLM 1B, `arb_Arab` (Modern Standard Arabic) | 12.5% | 3.1% | 2.6% | 2.36 s | 21–42 |
+| LLM 1B, `apc_Arab` (Lebanese) | 3.1% | 3.1% | 5.3% | 2.46 s | 33–42 |
+| LLM 1B, no hint (mixed) | 9.4% | 3.1% | 5.3% | 2.65 s | 25–42 |
+| LLM 300M, `arb_Arab` | 9.4% | 3.1% | 5.3% | 2.24 s | 32–42 |
+| LLM 1B, English `eng_Latn` (24 s test clip) | 0% | 0% | 0% | — | 67–78 |
+
+\* Another speech service (port 8766, from other work) was running on the same GPU during these
+runs, so the times are higher than a quiet machine would give (61–76 ms per decoder step for
+Arabic, 105–117 ms for English, against 48 ms measured before). The English run's times were
+too disturbed to use.
+
+- **The only remaining error in every Arabic run is one word:** "ملاحظاتكم" (your notes) was heard
+  as "ملاحقين" or left out at a window cut.
+- **Arabic is quicker to write than English.** Arabic script leaves out short vowels, so a 4 s
+  window takes about 34 decoder steps, half of English's 70. Even with the GPU shared, LLM 1B took
+  2.4–2.7 s per Arabic window, under the 3 s of new speech each window brings, so in this
+  benchmark it kept up. Not yet measured in a live meeting, which added 1.7–2.7 s per window for
+  English.
+- **Hints:** all three gave the same words after the fix. `apc_Arab` and no hint wrote hamza
+  forms (أرجو, إلى) where `arb_Arab` sometimes did not (ارجو, الى). The scorer counts these as equal.
+- **LLM 300M against LLM 1B:** the same words on this recording.
+- **Limits:** one synthetic voice reading formal Arabic slowly and clearly, through a file rather
+  than a microphone. It says nothing yet about Lebanese dialect, real voices, room noise or mixed
+  Arabic/English speech. Those need real recordings with reference transcripts.
+
 ## Files changed
 
 | File | Change |
 | --- | --- |
-| `speech/service.py` | default model `omniASR_LLM_1B_v2` (23 Nov), then `omniASR_LLM_300M_v2` (25 Nov); turns on the reorder skip for LLM models |
+| `speech/service.py` | default model `omniASR_LLM_1B_v2` (23 Nov), then `omniASR_LLM_300M_v2` (25 Nov), then `omniASR_LLM_1B_v2` again (25 Nov); turns on the reorder skip for LLM models |
 | `speech/recognition.py` | `skip_identity_reorder()` |
 | `speech/benchmark.py` | new: speed benchmark used for the tables above (`--seconds`, `--overlap`, `--save`) |
 | `speech/README.md`, `README.md` | default model, download sizes, disk space, measured speeds |
 | `client/local-speech.js` | "still loading" message gives the new download size |
 | `public/speech-buffer.js` | 4-second windows with 1-second overlap when speech runs on (was: up to 8 s, no overlap) |
-| `client/transcript-merge.js` | new: joins overlapping windows' text without repeating words |
+| `client/transcript-merge.js` | new: joins overlapping windows' text without repeating words; later: Arabic spelling variants, letter comparison, keeps everything when nothing lines up |
 | `client/transcription.js` | joins each window's text before sending it; caption time spans only the new part; queue of 120 windows |
-| `scripts/merge-windows.mjs` | new: joins `benchmark.py --save` output like the page and scores it |
+| `scripts/merge-windows.mjs` | new: joins `benchmark.py --save` output like the page and scores it (word and character error rate, Arabic-aware normalization; reference text or a `.txt` file) |
 | `tests/speech-buffer.test.mjs`, `tests/transcript-merge.test.mjs`, `scripts/transcription.mjs` | tests for the windows and the joining |
 
 ## Reproducing
@@ -286,6 +346,21 @@ cd ..
 S="we are testing the meeting transcription system every participant runs the speech model on their own computer"
 node scripts/merge-windows.mjs speech/windows.json "$S $S $S we are testing the meeting transcription system every participant runs the speech model on their own"
 ```
+
+Arabic test recording and scoring (from the repository root):
+
+```sh
+D=data/transcription-test
+say -v Majed -r 160 -o $D/arabic-msa.aiff "$(cat $D/arabic-msa.txt)"
+afconvert -f WAVE -d LEI16@16000 -c 1 $D/arabic-msa.aiff $D/arabic-msa.wav
+cd speech
+../.venv-omniasr/bin/python benchmark.py --model omniASR_LLM_1B_v2 --language arb_Arab --wav ../$D/arabic-msa.wav --seconds 4 --overlap 1 --segments 7 --repeats 1 --save ../$D/arabic-1B.json
+cd ..
+node scripts/merge-windows.mjs $D/arabic-1B.json $D/arabic-msa.txt
+```
+
+(The recording used here was made from the same sentences with punctuation, which only changes the
+pauses.)
 
 Live test, with the service started on port 8766 (`npm run speech -- --port 8766`):
 

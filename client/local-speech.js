@@ -29,7 +29,7 @@ export function createLocalSpeech(url, fetcher = (...args) => fetch(...args)) {
 export function speechProblem(health, url, origin) {
   switch (health.status) {
     case 'ready': return null;
-    case 'loading': return 'The speech model on this computer is still loading (its first start downloads the model, 6.1 GiB by default). Try again once it is ready.';
+    case 'loading': return 'The speech model on this computer is still loading (its first start downloads the model, 8.5 GiB by default). Try again once it is ready.';
     case 'failed': return `The speech model on this computer failed to load: ${health.error || 'see the speech service window'}.`;
     case 'blocked': return `The speech service on this computer does not accept this site. Restart it with: npm run speech -- --allow-origin ${origin}`;
     default: return `No speech service is running on this computer (${url}). Transcription runs on your own computer: start it with "npm run speech" (see speech/README.md).`;
